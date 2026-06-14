@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>aRacer BLE Dash</title>
+<style>
+  :root{
+    --bg:#0a0a0c; --panel:#111114; --line:rgba(255,255,255,0.08);
+    --text:#f2f2f0; --muted:#8a8a92;
+    --cyan:#37e0e6; --amber:#ffb74d; --red:#ff4d4d;
+    --green:#4ade80; --blue:#3b82f6; --yellow:#ffd23f;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body{ margin:0;padding:0;height:100%;width:100%;background:var(--bg);color:var(--text);font-family:'Rajdhani','Segoe UI',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased; }
+  body{ background-image:repeating-linear-gradient(135deg,rgba(255,255,255,0.012) 0px,rgba(255,255,255,0.012) 1px,transparent 1px,transparent 6px),repeating-linear-gradient(45deg,rgba(255,255,255,0.012) 0px,rgba(255,255,255,0.012) 1px,transparent 1px,transparent 6px); }
+
+  .topbar{ position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;padding:max(8px,env(safe-area-inset-top)) 10px 6px;z-index:50; }
+  .pill{ border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-size:13px;letter-spacing:0.5px;color:var(--muted);background:rgba(255,255,255,0.02); }
+  .pill.on{ color:#9be8ff;border-color:#2b6f7a;background:rgba(43,170,190,0.08); }
+  .pill.err{ color:#ff8080;border-color:rgba(255,77,77,0.3);background:rgba(255,77,77,0.06); }
+
+  #connectBtn{ border:1px solid var(--line);border-radius:6px;padding:6px 14px;font-size:13px;color:var(--muted);background:rgba(255,255,255,0.02);letter-spacing:0.5px;cursor:pointer; }
+  #connectBtn.connected{ color:#4ade80;border-color:rgba(74,222,128,0.4);background:rgba(74,222,128,0.08); }
+  #connectBtn.connecting{ color:var(--amber);border-color:rgba(255,183,77,0.3);background:rgba(255,183,77,0.06); }
+  #editBtn{ margin-left:auto;border:1px solid var(--line);border-radius:6px;padding:6px 14px;font-size:13px;color:var(--muted);background:rgba(255,255,255,0.02);letter-spacing:0.5px;cursor:pointer; }
+  #editBtn.active{ color:#0a0a0c;background:var(--cyan);border-color:var(--cyan);font-weight:600; }
+  #pipBtn{ border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--muted);background:rgba(255,255,255,0.02);cursor:pointer; }
+
+  #grid{ position:fixed;inset:0;padding-top:calc(env(safe-area-inset-top) + 44px);padding-bottom:8px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch; }
+  #gridInner{ display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:8px;padding:0 8px 8px;min-height:calc(100vh - env(safe-area-inset-top) - 52px); }
+
+  .tile{ position:relative;border-radius:14px;background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;min-height:90px;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease,opacity .15s ease; }
+  .tile.size-1x1{ grid-column:span 1;grid-row:span 1; }
+  .tile.size-2x2{ grid-column:span 2;grid-row:span 2; }
+  .tile.size-2x1{ grid-column:span 2;grid-row:span 1; }
+  .tile.dragging{ opacity:0.35;transform:scale(0.96);z-index:30; }
+  .tile.drag-over{ box-shadow:inset 0 0 0 2px var(--cyan); }
+  .tile.editing{ animation:jiggle 0.35s ease-in-out infinite; }
+  @keyframes jiggle{ 0%,100%{ transform:rotate(0deg); } 25%{ transform:rotate(-0.6deg); } 75%{ transform:rotate(0.6deg); } }
+  .tile .remove-badge{ position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:#ff4d4d;color:#fff;align-items:center;justify-content:center;font-size:14px;font-weight:700;z-index:5;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,0.5);display:none; }
+  .tile.editing .remove-badge{ display:flex; }
+  .tile.add-tile{ border-style:dashed;border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.015);color:var(--muted);font-size:32px;cursor:pointer; }
+
+  .tile-label{ font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--param-color,var(--muted));margin-bottom:2px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-weight:600; }
+  .tile-value{ font-family:'JetBrains Mono','Courier New',monospace;font-weight:700;line-height:1;color:#fff;font-size:clamp(20px,7vw,34px);letter-spacing:1px; }
+  .tile-unit{ font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:1px; }
+  .tile-underline{ width:60%;height:1px;background:var(--param-color,var(--cyan));opacity:0.5;margin:4px 0; }
+  .size-2x2 .tile-value{ font-size:clamp(34px,9vw,56px); }
+
+  .gauge-wrap{ position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center; }
+  .gauge-svg{ position:absolute;inset:0;width:100%;height:100%; }
+  .gauge-center{ display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2; }
+  .gauge-center .tile-value{ font-size:clamp(20px,6.5vw,32px); }
+  .size-2x2 .gauge-center .tile-value{ font-size:clamp(36px,10vw,64px); }
+  .gauge-bg{ fill:none;stroke:rgba(255,255,255,0.06);stroke-width:6; }
+  .gauge-fg{ fill:none;stroke:var(--param-color,var(--cyan));stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset 0.4s ease; }
+
+  .modal-backdrop{ position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s ease; }
+  .modal-backdrop.show{ opacity:1;pointer-events:auto; }
+  .modal-sheet{ width:100%;max-width:600px;background:#15151a;border:1px solid var(--line);border-radius:18px 18px 0 0;max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s cubic-bezier(.2,.9,.3,1);padding-bottom:env(safe-area-inset-bottom); }
+  .modal-backdrop.show .modal-sheet{ transform:translateY(0); }
+  .modal-header{ padding:16px 18px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line); }
+  .modal-header h3{ margin:0;font-size:16px;letter-spacing:1px;font-weight:600; }
+  .modal-close{ border:none;background:rgba(255,255,255,0.06);color:var(--text);width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer; }
+  .modal-body{ overflow-y:auto;padding:10px 12px; }
+  .group-title{ font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:10px 8px 6px; }
+  .param-list{ display:flex;flex-direction:column;gap:4px; }
+  .param-item{ display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid transparent;font-size:14px; }
+  .param-item.selected{ border-color:var(--cyan);background:rgba(55,224,230,0.08); }
+  .param-item .pname{ font-weight:600; }
+  .param-item .pcode{ color:var(--muted);font-size:11px;font-family:monospace;margin-left:8px; }
+  .param-item .check{ width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:12px;color:transparent; }
+  .param-item.selected .check{ border-color:var(--cyan);background:var(--cyan);color:#0a0a0c; }
+  .style-row,.size-row{ display:flex;gap:8px;padding:10px 8px;flex-wrap:wrap; }
+  .style-btn{ flex:1;min-width:80px;border:1px solid var(--line);border-radius:10px;padding:10px 6px;text-align:center;font-size:12px;background:rgba(255,255,255,0.03);color:var(--muted);cursor:pointer; }
+  .style-btn.selected{ border-color:var(--cyan);color:#fff;background:rgba(55,224,230,0.08); }
+  .delete-row{ padding:4px 8px 16px; }
+  .delete-btn{ width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,77,77,0.3);background:rgba(255,77,77,0.08);color:#ff8080;font-size:14px;font-weight:600;cursor:pointer; }
+  ::-webkit-scrollbar{ width:4px;height:4px; }
+  ::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.15);border-radius:2px; }
+  .hint-toast{ position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(20,20,24,0.95);border:1px solid var(--line);padding:8px 16px;border-radius:20px;font-size:12px;color:var(--muted);z-index:60;opacity:0;transition:opacity .3s ease;pointer-events:none;white-space:nowrap; }
+  .hint-toast.show{ opacity:1; }
+
+  #bleLog{ position:fixed;bottom:50px;left:8px;right:8px;background:rgba(0,0,0,0.85);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-family:monospace;font-size:11px;color:#4ade80;z-index:70;max-height:100px;overflow-y:auto;display:none; }
+  #bleLog.show{ display:block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button id="connectBtn" class="pill">🔵 Connect</button>
+  <div id="bleStatus" class="pill">bLink3</div>
+  <button id="pipBtn" class="pill">PiP</button>
+  <button id="editBtn">Налаштувати</button>
+</div>
+
+<div id="grid"><div id="gridInner"></div></div>
+<div id="bleLog"></div>
+
+<canvas id="pipCanvas" width="400" height="200" style="display:none;"></canvas>
+<video id="pipVideo" style="position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;" muted playsinline></video>
+
+<div class="hint-toast" id="hintToast"></div>
+
+<!-- PiP modal -->
+<div class="modal-backdrop" id="pipModalBackdrop">
+  <div class="modal-sheet">
+    <div class="modal-header"><h3>Picture-in-Picture</h3><button class="modal-close" id="pipModalClose">✕</button></div>
+    <div class="modal-body" id="pipModalBody"></div>
+  </div>
+</div>
+
+<!-- Param picker modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal-sheet">
+    <div class="modal-header"><h3 id="modalTitle">Вибрати параметр</h3><button class="modal-close" id="modalClose">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   PARAMETER TABLE — декодовано з Default_AMS.ams (aRacer APK)
+   Формула: value = (raw - bias) / scale
+   raw = big-endian integer, size bytes, starting at byte off
+   Пакет: [header...] [payload bytes...] — payload починається з байту 0
+   ============================================================ */
+const PARAMS = {
+  // code: { name, off, size, scale, bias, unit, min, max, color }
+  'RPM':       { name:'RPM',          off:26, size:2, scale:1,    bias:0,   unit:'rpm',  min:0,    max:9000, color:'#ffd23f' },
+  'T_Eng':     { name:'T_Eng',        off:33, size:1, scale:1,    bias:28,  unit:'°C',   min:0,    max:130,  color:'#3b82f6' },
+  'T_Air':     { name:'T_Air',        off:24, size:1, scale:1,    bias:28,  unit:'°C',   min:-20,  max:80,   color:'#37e0e6' },
+  'AFR':       { name:'AFR',          off:20, size:1, scale:10,   bias:0,   unit:'AFR',  min:10,   max:18,   color:'#ffb74d' },
+  'AFR_WBO2':  { name:'AFR WBO2',     off:55, size:2, scale:100,  bias:0,   unit:'AFR',  min:10,   max:18,   color:'#ff9f43' },
+  'SA':        { name:'SA',           off:25, size:1, scale:1,    bias:128, unit:'°',    min:-30,  max:50,   color:'#ff6b81' },
+  'TPS':       { name:'TPS%',         off:34, size:1, scale:2.55, bias:0,   unit:'%',    min:0,    max:100,  color:'#37e0e6' },
+  'TPS_indx':  { name:'TPS_indx',     off:28, size:1, scale:1,    bias:0,   unit:'cnt',  min:0,    max:255,  color:'#37e0e6' },
+  'Volt':      { name:'Volt_Batt',    off:29, size:1, scale:10,   bias:0,   unit:'V',    min:10,   max:16,   color:'#4ade80' },
+  'Fuel_CL':   { name:'Fuel_CL',      off:22, size:2, scale:5.12, bias:512, unit:'%',    min:-25,  max:25,   color:'#4ade80' },
+  'Cyl1_AP':   { name:'Cyl1_Eng_AP',  off:45, size:2, scale:256,  bias:0,   unit:'kPa', min:0,    max:110,  color:'#37e0e6' },
+  'GPS_Spd':   { name:'GPS Speed',    off:124,size:2, scale:1,    bias:0,   unit:'km/h', min:0,    max:300,  color:'#37e0e6' },
+  'Veh_Spd':   { name:'Vehicle Spd',  off:51, size:2, scale:256,  bias:0,   unit:'km/h', min:0,    max:300,  color:'#37e0e6' },
+  'Gear':      { name:'Gear',         off:130,size:1, scale:1,    bias:0,   unit:'',     min:0,    max:6,    color:'#3b82f6' },
+  'EGT':       { name:'EGT',          off:91, size:2, scale:1,    bias:0,   unit:'°C',   min:0,    max:1000, color:'#ff4d4d' },
+  'P_Atm':     { name:'Atm Pressure', off:44, size:1, scale:1,    bias:0,   unit:'kPa', min:80,   max:110,  color:'#8a8a92' },
+  'FuelPW':    { name:'FuelPW',       off:35, size:2, scale:289.0625, bias:0, unit:'ms', min:0,   max:20,   color:'#ffb74d' },
+  'Inj_Rate':  { name:'Inj Rate',     off:82, size:1, scale:2.56, bias:0,   unit:'%',    min:0,    max:100,  color:'#ff9f43' },
+};
+
+const PARAM_GROUPS = [
+  { title:'Двигун',   codes:['RPM','T_Eng','T_Air','SA','Gear','P_Atm','EGT'] },
+  { title:'Паливо',   codes:['AFR','AFR_WBO2','Fuel_CL','FuelPW','Inj_Rate'] },
+  { title:'Дросель',  codes:['TPS','TPS_indx','Cyl1_AP'] },
+  { title:'Швидкість',codes:['GPS_Spd','Veh_Spd'] },
+  { title:'Електрика',codes:['Volt'] },
+];
+
+/* live values store */
+const liveValues = {};
+Object.keys(PARAMS).forEach(k => liveValues[k] = '--');
+
+/* ===== BLE PROTOCOL =====
+   aRacer bLink3 — FFE0 / FFE1
+   Packet assembler: collect bytes until checksum valid
+   Format: payload bytes directly (no length prefix needed — we detect by checksum)
+   Actually from Rx_Received analysis: packet has a header, length field, payload, checksum.
+   We buffer incoming notify bytes and reassemble frames.
+   Header: 2 sync bytes (c,d fields in c/c class — not revealed, but from BLE sniff = 0xA5 0x5A typical)
+   Since we don't have actual device to confirm, we parse defensively:
+   - Try to read the 'Para' block as a contiguous payload starting at byte 0 of a notify packet
+   - Log raw bytes and let user confirm mapping
+*/
+
+let bleDevice = null, bleChar = null;
+let rxBuffer = new Uint8Array(0);
+let bleConnected = false;
+const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+function appendBuffer(a, b) {
+  const c = new Uint8Array(a.length + b.length);
+  c.set(a); c.set(b, a.length); return c;
+}
+
+function tryParsePacket(buf) {
+  // Find a window where checksum passes: sum(bytes[start..end-1]) + bytes[end] == 256 (or 0)
+  // Based on Rx_Received: checksum = 256 - (sum of payload bytes) & 0xFF, appended at end
+  // And payload length is in the packet. We'll try lengths >= 20 bytes.
+  for (let start = 0; start < buf.length - 20; start++) {
+    for (let paylen = 20; paylen <= Math.min(200, buf.length - start - 1); paylen++) {
+      let sum = 0;
+      for (let i = start; i < start + paylen; i++) sum += buf[i];
+      const expected_cs = (256 - (sum & 0xFF)) & 0xFF;
+      if (buf[start + paylen] === expected_cs) {
+        // Valid packet found
+        const payload = buf.slice(start, start + paylen);
+        return { payload, consumed: start + paylen + 1 };
+      }
+    }
+  }
+  return null;
+}
+
+function readRaw(payload, off, size) {
+  if (off + size > payload.length) return null;
+  let val = 0;
+  for (let i = 0; i < size; i++) val = (val << 8) | payload[off + i];
+  // handle signed for 1-byte (treat as unsigned first)
+  return val;
+}
+
+function parsePayload(payload) {
+  logBle('Packet ' + payload.length + 'B: ' + Array.from(payload.slice(0,8)).map(b=>b.toString(16).padStart(2,'0')).join(' ') + '...');
+  Object.entries(PARAMS).forEach(([code, p]) => {
+    const raw = readRaw(payload, p.off, p.size);
+    if (raw === null) return;
+    const val = (raw - p.bias) / p.scale;
+    const rounded = p.unit === 'rpm' || p.unit === '' ? Math.round(val) : Math.round(val * 10) / 10;
+    liveValues[code] = rounded;
+  });
+  updateDisplay();
+}
+
+function onBleData(event) {
+  const chunk = new Uint8Array(event.target.value.buffer);
+  rxBuffer = appendBuffer(rxBuffer, chunk);
+  // cap buffer
+  if (rxBuffer.length > 1024) rxBuffer = rxBuffer.slice(rxBuffer.length - 512);
+  const result = tryParsePacket(rxBuffer);
+  if (result) {
+    parsePayload(result.payload);
+    rxBuffer = rxBuffer.slice(result.consumed);
+  }
+}
+
+async function connectBLE() {
+  const btn = document.getElementById('connectBtn');
+  if (bleConnected) {
+    try { bleDevice && bleDevice.gatt.disconnect(); } catch(e){}
+    bleConnected = false;
+    btn.textContent = '🔵 Connect';
+    btn.className = 'pill';
+    document.getElementById('bleStatus').textContent = 'bLink3';
+    document.getElementById('bleStatus').className = 'pill';
+    return;
+  }
+  btn.textContent = '⏳ Connecting...';
+  btn.className = 'pill connecting';
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'bLink' }],
+      optionalServices: [SERVICE_UUID]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onBleDisconnect);
+    const server = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    bleChar = await service.getCharacteristic(CHAR_UUID);
+    bleChar.addEventListener('characteristicvaluechanged', onBleData);
+    await bleChar.startNotifications();
+    bleConnected = true;
+    btn.textContent = '🟢 ' + (bleDevice.name || 'Connected');
+    btn.className = 'pill connected';
+    document.getElementById('bleStatus').textContent = '● LIVE';
+    document.getElementById('bleStatus').className = 'pill on';
+    logBle('Connected to ' + bleDevice.name);
+    showHint('Підключено до ' + bleDevice.name);
+  } catch(e) {
+    bleConnected = false;
+    btn.textContent = '🔵 Connect';
+    btn.className = 'pill';
+    document.getElementById('bleStatus').textContent = 'Error';
+    document.getElementById('bleStatus').className = 'pill err';
+    logBle('Error: ' + e.message);
+    showHint('Помилка: ' + e.message);
+  }
+}
+
+function onBleDisconnect() {
+  bleConnected = false;
+  document.getElementById('connectBtn').textContent = '🔵 Connect';
+  document.getElementById('connectBtn').className = 'pill';
+  document.getElementById('bleStatus').textContent = 'Disconnected';
+  document.getElementById('bleStatus').className = 'pill err';
+  logBle('Disconnected');
+}
+
+document.getElementById('connectBtn').addEventListener('click', connectBLE);
+
+let logVisible = false;
+const bleLogEl = document.getElementById('bleLog');
+function logBle(msg) {
+  bleLogEl.innerHTML += msg + '<br>';
+  bleLogEl.scrollTop = bleLogEl.scrollHeight;
+}
+// long press connect btn = toggle log
+let logTimer;
+document.getElementById('connectBtn').addEventListener('pointerdown', () => {
+  logTimer = setTimeout(() => { logVisible=!logVisible; bleLogEl.classList.toggle('show',logVisible); }, 800);
+});
+document.getElementById('connectBtn').addEventListener('pointerup', () => clearTimeout(logTimer));
+
+/* ===== LAYOUT ===== */
+let layout = defaultLayout();
+let editMode = false, nextId = 20;
+
+function defaultLayout(){
+  return [
+    {id:'t1',param:'AFR',   style:'flat',  size:'1x1'},
+    {id:'t2',param:'Fuel_CL',style:'flat', size:'1x1'},
+    {id:'t3',param:'T_Air', style:'flat',  size:'1x1'},
+    {id:'t4',param:'SA',    style:'flat',  size:'1x1'},
+    {id:'t5',param:'T_Eng', style:'gauge', size:'2x2'},
+    {id:'t6',param:'RPM',   style:'gauge', size:'2x2'},
+    {id:'t7',param:'Gear',  style:'gauge', size:'1x1'},
+    {id:'t8',param:'EGT',   style:'gauge', size:'1x1'},
+    {id:'t9',param:'TPS',   style:'gauge', size:'1x1'},
+    {id:'t10',param:'Volt', style:'gauge', size:'1x1'},
+    {id:'t11',param:'RPM',  style:'flat',  size:'1x1'},
+    {id:'t12',param:'Volt', style:'flat',  size:'1x1'},
+    {id:'t13',param:'GPS_Spd',style:'flat',size:'2x1'},
+  ];
+}
+
+const gridInner = document.getElementById('gridInner');
+
+function render(){
+  gridInner.innerHTML='';
+  layout.forEach(tile => gridInner.appendChild(renderTile(tile)));
+  if(editMode){
+    const add = document.createElement('div');
+    add.className='tile add-tile size-1x1'; add.textContent='+';
+    add.addEventListener('click',()=>openPicker(null));
+    gridInner.appendChild(add);
+  }
+}
+
+function renderTile(tile){
+  const p = PARAMS[tile.param];
+  const el = document.createElement('div');
+  el.className=`tile size-${tile.size} ${tile.style} ${editMode?'editing':''}`;
+  el.dataset.id=tile.id;
+  el.style.setProperty('--param-color', p.color);
+  const rb=document.createElement('div'); rb.className='remove-badge'; rb.textContent='✕';
+  rb.addEventListener('click',e=>{e.stopPropagation();layout=layout.filter(t=>t.id!==tile.id);render();});
+  el.appendChild(rb);
+  el.appendChild(tile.style==='gauge' ? buildGauge(tile,p) : buildFlat(tile,p));
+  attachInteractions(el,tile);
+  return el;
+}
+
+function buildFlat(tile,p){
+  const w=document.createElement('div');
+  w.style.cssText='display:flex;flex-direction:column;align-items:center;';
+  const label=document.createElement('div'); label.className='tile-label'; label.textContent=p.name;
+  const ul=document.createElement('div'); ul.className='tile-underline';
+  const val=document.createElement('div'); val.className='tile-value'; val.dataset.live=tile.param;
+  val.textContent=liveValues[tile.param];
+  const unit=document.createElement('div'); unit.className='tile-unit'; unit.textContent=p.unit;
+  w.append(label,ul,val); if(p.unit) w.append(unit);
+  return w;
+}
+
+function buildGauge(tile,p){
+  const wrap=document.createElement('div'); wrap.className='gauge-wrap';
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 100 100'); svg.classList.add('gauge-svg');
+  const r=42, C=2*Math.PI*r;
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  bg.setAttribute('cx','50');bg.setAttribute('cy','50');bg.setAttribute('r',r);bg.classList.add('gauge-bg');
+  bg.setAttribute('stroke-dasharray',`${C*0.75} ${C}`);bg.setAttribute('stroke-dashoffset',C*0.125);bg.setAttribute('transform','rotate(90 50 50)');
+  const fg=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  fg.setAttribute('cx','50');fg.setAttribute('cy','50');fg.setAttribute('r',r);fg.classList.add('gauge-fg');
+  fg.setAttribute('transform','rotate(90 50 50)');
+  fg.dataset.live=tile.param; fg.dataset.r=r; fg.dataset.c=C;
+  svg.append(bg,fg);
+  const center=document.createElement('div'); center.className='gauge-center';
+  const label=document.createElement('div'); label.className='tile-label'; label.textContent=p.name;
+  const val=document.createElement('div'); val.className='tile-value'; val.dataset.live=tile.param;
+  val.textContent=liveValues[tile.param];
+  const unit=document.createElement('div'); unit.className='tile-unit'; unit.textContent=p.unit;
+  center.append(label,val); if(p.unit) center.append(unit);
+  wrap.append(svg,center);
+  updateGaugeFg(fg,p,liveValues[tile.param]);
+  return wrap;
+}
+
+function updateGaugeFg(fg,p,value){
+  if(value==='--') return;
+  const r=parseFloat(fg.dataset.r), C=parseFloat(fg.dataset.c);
+  let pct=Math.max(0,Math.min(1,(value-p.min)/(p.max-p.min)));
+  fg.setAttribute('stroke-dasharray',`${C*0.75*pct} ${C}`);
+  fg.setAttribute('stroke-dashoffset',C*0.125);
+}
+
+function updateDisplay(){
+  document.querySelectorAll('[data-live]').forEach(el=>{
+    const code=el.dataset.live, p=PARAMS[code]; if(!p) return;
+    const v=liveValues[code];
+    if(el.tagName==='circle') updateGaugeFg(el,p,v);
+    else el.textContent=v;
+  });
+}
+
+/* drag & drop */
+let dragState=null;
+function attachInteractions(el,tile){
+  let tapStart=0, moved=false, longTimer=null;
+  el.addEventListener('pointerdown',e=>{
+    if(e.target.closest('.remove-badge')) return;
+    tapStart=Date.now(); moved=false;
+    longTimer=setTimeout(()=>{ if(!editMode) enterEditMode(); startDrag(el,tile); },450);
+  });
+  el.addEventListener('pointermove',()=>{ moved=true; clearTimeout(longTimer); });
+  el.addEventListener('pointerup',()=>{
+    clearTimeout(longTimer);
+    if(dragState&&dragState.tileId===tile.id){ endDrag(); return; }
+    if(!moved&&Date.now()-tapStart<450) openPicker(tile);
+  });
+  el.addEventListener('pointerleave',()=>clearTimeout(longTimer));
+}
+
+function enterEditMode(){ editMode=true; document.getElementById('editBtn').className='active'; document.getElementById('editBtn').textContent='Готово'; showHint('Затримай — перемістити • Тап — змінити'); render(); }
+function exitEditMode(){ editMode=false; document.getElementById('editBtn').className=''; document.getElementById('editBtn').textContent='Налаштувати'; render(); }
+document.getElementById('editBtn').addEventListener('click',()=>editMode?exitEditMode():enterEditMode());
+
+function startDrag(el,tile){ dragState={tileId:tile.id}; el.classList.add('dragging'); if(navigator.vibrate) navigator.vibrate(15); document.addEventListener('pointermove',onDragMove); }
+function onDragMove(e){
+  if(!dragState) return;
+  const t=document.elementFromPoint(e.clientX,e.clientY)?.closest('.tile');
+  document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
+  if(t&&t.dataset.id&&t.dataset.id!==dragState.tileId){ t.classList.add('drag-over'); dragState.overId=t.dataset.id; } else dragState.overId=null;
+}
+function endDrag(){
+  document.removeEventListener('pointermove',onDragMove);
+  if(dragState?.overId){
+    const fi=layout.findIndex(t=>t.id===dragState.tileId), ti=layout.findIndex(t=>t.id===dragState.overId);
+    const [m]=layout.splice(fi,1); layout.splice(ti,0,m);
+  }
+  dragState=null; render();
+}
+
+/* picker modal */
+const backdrop=document.getElementById('modalBackdrop');
+let pickerTarget=null;
+function openPicker(tile){ pickerTarget=tile; document.getElementById('modalTitle').textContent=tile?'Змінити параметр':'Додати плитку'; buildPickerBody(); backdrop.classList.add('show'); }
+function closePicker(){ backdrop.classList.remove('show'); pickerTarget=null; }
+document.getElementById('modalClose').addEventListener('click',closePicker);
+backdrop.addEventListener('click',e=>{ if(e.target===backdrop) closePicker(); });
+
+function buildPickerBody(){
+  const body=document.getElementById('modalBody'); body.innerHTML='';
+  const cur=pickerTarget?.param, curStyle=pickerTarget?.style||'flat', curSize=pickerTarget?.size||'1x1';
+  PARAM_GROUPS.forEach(g=>{
+    const gt=document.createElement('div'); gt.className='group-title'; gt.textContent=g.title; body.appendChild(gt);
+    const list=document.createElement('div'); list.className='param-list';
+    g.codes.forEach(code=>{
+      const p=PARAMS[code]; if(!p) return;
+      const item=document.createElement('div');
+      item.className='param-item'+(code===cur?' selected':'');
+      item.innerHTML=`<div><span class="pname">${p.name}</span><span class="pcode">${p.unit}</span></div><div class="check">✓</div>`;
+      item.addEventListener('click',()=>{ selectParam(code); });
+      list.appendChild(item);
+    });
+    body.appendChild(list);
+  });
+  // style
+  const st=document.createElement('div'); st.className='group-title'; st.textContent='Стиль'; body.appendChild(st);
+  const sr=document.createElement('div'); sr.className='style-row';
+  [['flat','Цифри'],['gauge','Кільце']].forEach(([v,l])=>{ const b=document.createElement('div'); b.className='style-btn'+(curStyle===v?' selected':''); b.textContent=l; b.addEventListener('click',()=>selectStyle(v)); sr.appendChild(b); });
+  body.appendChild(sr);
+  // size
+  const szt=document.createElement('div'); szt.className='group-title'; szt.textContent='Розмір'; body.appendChild(szt);
+  const szr=document.createElement('div'); szr.className='size-row';
+  [['1x1','Малий'],['2x1','Широкий'],['2x2','Великий']].forEach(([v,l])=>{ const b=document.createElement('div'); b.className='style-btn'+(curSize===v?' selected':''); b.textContent=l; b.addEventListener('click',()=>selectSize(v)); szr.appendChild(b); });
+  body.appendChild(szr);
+  if(pickerTarget){
+    const dr=document.createElement('div'); dr.className='delete-row';
+    const db=document.createElement('button'); db.className='delete-btn'; db.textContent='Видалити';
+    db.addEventListener('click',()=>{ layout=layout.filter(t=>t.id!==pickerTarget.id); closePicker(); render(); });
+    dr.appendChild(db); body.appendChild(dr);
+  }
+}
+
+function selectParam(code){
+  if(pickerTarget){ pickerTarget.param=code; } else { pickerTarget={id:'t'+(nextId++),param:code,style:'flat',size:'1x1'}; layout.push(pickerTarget); }
+  buildPickerBody(); render();
+}
+function selectStyle(v){ if(pickerTarget){ pickerTarget.style=v; buildPickerBody(); render(); } }
+function selectSize(v){ if(pickerTarget){ pickerTarget.size=v; buildPickerBody(); render(); } }
+
+/* hint */
+function showHint(msg){ const t=document.getElementById('hintToast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* ===== PIP ===== */
+let pipConfig={big:'RPM',small1:'T_Eng',small2:'Volt'};
+const pipCanvas=document.getElementById('pipCanvas'), pipVideo=document.getElementById('pipVideo');
+const ctx=pipCanvas.getContext('2d');
+let pipInterval=null;
+
+function drawPip(){
+  const W=pipCanvas.width, H=pipCanvas.height;
+  ctx.fillStyle='#0a0a0c'; ctx.fillRect(0,0,W,H);
+  const big=PARAMS[pipConfig.big], s1=PARAMS[pipConfig.small1], s2=PARAMS[pipConfig.small2];
+  const bigW=W*0.62;
+  ctx.textBaseline='middle';
+  ctx.fillStyle=big.color; ctx.font='600 22px Rajdhani,sans-serif'; ctx.textAlign='left';
+  ctx.fillText(big.name, 18, 30);
+  ctx.fillStyle='#fff'; ctx.font='700 88px monospace';
+  ctx.fillText(String(liveValues[pipConfig.big]), 16, H*0.58);
+  if(big.unit){ ctx.fillStyle='#8a8a92'; ctx.font='500 20px Rajdhani,sans-serif'; ctx.fillText(big.unit,18,H*0.58+38); }
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(bigW,14); ctx.lineTo(bigW,H-14); ctx.stroke();
+  [s1,s2].forEach((p,i)=>{
+    const yBase=i===0?H*0.30:H*0.74;
+    ctx.fillStyle=p.color; ctx.font='600 16px Rajdhani,sans-serif'; ctx.textAlign='left';
+    ctx.fillText(p.name, bigW+16, yBase-30);
+    ctx.fillStyle='#fff'; ctx.font='700 40px monospace';
+    ctx.fillText(String(liveValues[i===0?pipConfig.small1:pipConfig.small2]), bigW+16, yBase);
+    if(p.unit){ ctx.fillStyle='#8a8a92'; ctx.font='500 14px Rajdhani,sans-serif'; ctx.fillText(p.unit,bigW+16,yBase+26); }
+  });
+}
+
+async function startPip(){
+  if(!('requestPictureInPicture' in document.createElement('video'))){ showHint('PiP не підтримується'); return; }
+  drawPip();
+  const stream=pipCanvas.captureStream(15);
+  pipVideo.srcObject=stream;
+  if(pipInterval) clearInterval(pipInterval);
+  pipInterval=setInterval(drawPip, 500);
+  try{
+    await pipVideo.play();
+    if(document.pictureInPictureElement) await document.exitPictureInPicture();
+    else await pipVideo.requestPictureInPicture();
+  }catch(e){ showHint('PiP помилка: '+e.message); }
+}
+pipVideo.addEventListener('leavepictureinpicture',()=>{ if(pipInterval){clearInterval(pipInterval);pipInterval=null;} });
+
+const pipBackdrop=document.getElementById('pipModalBackdrop');
+document.getElementById('pipBtn').addEventListener('click',()=>{ buildPipBody(); pipBackdrop.classList.add('show'); });
+document.getElementById('pipModalClose').addEventListener('click',()=>pipBackdrop.classList.remove('show'));
+pipBackdrop.addEventListener('click',e=>{ if(e.target===pipBackdrop) pipBackdrop.classList.remove('show'); });
+
+function buildPipBody(){
+  const body=document.getElementById('pipModalBody'); body.innerHTML='';
+  [{key:'big',title:'Велике число'},{key:'small1',title:'Малий 1'},{key:'small2',title:'Малий 2'}].forEach(slot=>{
+    const gt=document.createElement('div'); gt.className='group-title'; gt.textContent=slot.title; body.appendChild(gt);
+    const list=document.createElement('div'); list.className='param-list';
+    Object.entries(PARAMS).forEach(([code,p])=>{
+      const item=document.createElement('div');
+      item.className='param-item'+(pipConfig[slot.key]===code?' selected':'');
+      item.innerHTML=`<div><span class="pname">${p.name}</span><span class="pcode">${p.unit}</span></div><div class="check">✓</div>`;
+      item.addEventListener('click',()=>{ pipConfig[slot.key]=code; buildPipBody(); });
+      list.appendChild(item);
+    });
+    body.appendChild(list);
+  });
+  const dr=document.createElement('div'); dr.className='delete-row';
+  const sb=document.createElement('button'); sb.className='delete-btn';
+  sb.style.cssText='background:rgba(55,224,230,0.1);border-color:rgba(55,224,230,0.3);color:#9be8ff;';
+  sb.textContent='▶ Відкрити PiP';
+  sb.addEventListener('click',()=>{ pipBackdrop.classList.remove('show'); startPip(); });
+  dr.appendChild(sb); body.appendChild(dr);
+}
+
+render();
+</script>
+</body>
+</html>
