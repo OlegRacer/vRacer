@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Speedometer for Bluefy</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            background-color: #1c1c1e;
+            color: #ffffff;
+            padding: 40px 20px;
+            margin: 0;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #007aff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            transition: background 0.2s;
+        }
+        button:disabled {
+            background-color: #3a3a3c;
+            color: #aeaeae;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #ecc94b;
+        }
+        
+        /* Канвас ховаємо, він потрібен лише в пам'яті */
+        canvas { 
+            display: none; 
+        }
+
+        /* Відео має нормальний розмір для системи, але викинуте далеко за екран */
+        #video-container {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 300px;
+            height: 200px;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>GPS у Picture-in-Picture</h1>
+    <div id="status">Очікування сигналу GPS...</div>
+    
+    <button id="pipBtn" disabled>Запустити через JS</button>
+
+    <div id="video-container">
+        <video id="video" playsinline muted></video>
+    </div>
+
+    <canvas id="canvas" width="300" height="200"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const pipBtn = document.getElementById('pipBtn');
+        const statusDiv = document.getElementById('status');
+
+        let currentSpeed = 0;
+        let streamInitialized = false;
+
+        // Малюємо ОДИН кадр за запитом (економія енергії процесора)
+        function drawSpeedFrame() {
+            // Чи
