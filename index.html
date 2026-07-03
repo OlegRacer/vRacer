@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Speedometer (Working Version)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            background-color: #1c1c1e;
+            color: #ffffff;
+            padding: 40px 20px;
+            margin: 0;
+            position: relative;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .btn-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+            margin-top: 30px;
+            position: relative;
+            z-index: 10;
+        }
+        button {
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 80%;
+            max-width: 300px;
+        }
+        #pipBtn { background-color: #007aff; }
+        #pipBtn:disabled { background-color: #3a3a3c; color: #aeaeae; }
+        #clearCacheBtn { background-color: #ff453a; font-size: 14px; padding: 10px 20px; }
+        #status { margin-top: 20px; font-size: 14px; color: #ecc94b; position: relative; z-index: 10; }
+        
+        canvas { display: none; }
+
+        #video-container {
+            position: absolute;
+            top: 220px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 200px;
+            pointer-events: none;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+        #video-mask {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(28, 28, 30, 0.9);
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>GPS у Picture-in-Picture</h1>
+    <div id="status">Ініціалізація системи...</div>
+    
+    <div class="btn-container">
+        <button id="pipBtn" disabled>Запустити PiP</button>
+        <button id="clearCacheBtn">Скинути кеш сторінки</button>
+    </div>
+
+    <div id="video-container">
+        <div id="video-mask"></div>
+        <video id="video" playsinline muted autoplay></video>
+    </div>
+
+    <canvas id="canvas" width="300" height="200"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const pipBtn = document.getElementById('pipBtn');
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        const statusDiv = document.getElementById('status');
+
+        let currentSpeed = 0;
+
+        function drawSpeedFrame() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#34c759'; 
+            ctx.font = 'bold 70px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(currentSpeed, canvas.width / 2, canvas.height / 2 - 10);
+
+            ctx.fillStyle = '#aeaeae';
+            ctx.font = '20px -apple-system, sans-serif';
+            ctx.fillText('км/год', canvas.width / 2, canvas.height / 2 + 50);
+        }
+
+        function initStream() {
+            // Перевіряємо підтримку PiP взагалі
+            const isPipSupported = ('requestPictureInPicture' in document.createElement('video')) || (video.webkitSetPresentationMode);
+            if (!isPipSupported) {
+                statusDiv.innerText = "Ваш браузер або пристрій не підтримує PiP для Canvas.";
+                return;
+            }
+
+            drawSpeedFrame();
+            
+            // Запускаємо потік відмальовки
+            const stream = canvas.captureStream(30); 
+            video.srcObject = stream;
+            
+            video.muted = true;
+            video.play().catch(e => console.log("Чекаємо взаємодії для старту відео"));
+
+            pipBtn.removeAttribute('disabled');
+            statusDiv.innerText = "Очікування сигналу GPS... Натисніть кнопку PiP!";
+            
+            // Оновлюємо кадр раз на секунду
+            setInterval(drawSpeedFrame, 1000);
+        }
+
+        // Запускаємо GPS трекер
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    if (position.coords.speed !== null && position.coords.speed !== undefined) {
+                        currentSpeed = Math.round(position.coords.speed * 3.6);
+                    } else {
+                        currentSpeed = 0; 
+                    }
+                    drawSpeedFrame();
+                    if(statusDiv.innerText.includes("Очікування сигналу")) {
+                        statusDiv.innerText = "Сигнал GPS отримано. PiP готовий!";
+                    }
+                },
+                (error) => { statusDiv.innerText = `Помилка GPS: ${error.message}`; },
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+            );
+        } else {
+            statusDiv.innerText = "Геолокація не підтримується пристроєм.";
+        }
+
+        // Головна логіка кнопки PiP
+        pipBtn.addEventListener('click', async () => {
+            statusDiv.innerText = "Спроба запуску трансляції...";
+            try {
+                // Обов'язковий фікс для iOS/Android: робимо відео активним безпосередньо в момент кліку
+                video.muted = true;
+                await video.play();
+
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                    statusDiv.innerText = "Віконце PiP закрито.";
+                } else if (video.webkitSetPresentationMode) {
+                    video.webkitSetPresentationMode("picture-in-picture");
+                    statusDiv.innerText = "Віконце PiP відкрито (iOS)!";
+                } else {
+                    await video.requestPictureInPicture();
+                    statusDiv.innerText = "Віконце PiP відкрито!";
+                }
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerText = `Помилка: ${err.message}`;
+            }
+        });
+
+        clearCacheBtn.addEventListener('click', () => {
+            localStorage.clear();
+            sessionStorage.clear();
+            statusDiv.innerText = "Очищення кешу... Перезавантаження...";
+            setTimeout(() => { window.location.reload(true); }, 500);
+        });
+
+        // Стартуємо потік генерації зображення одразу при завантаженні сторінки
+        initStream();
+    </script>
+</body>
+</html>
