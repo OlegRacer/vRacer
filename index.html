@@ -1,0 +1,83 @@
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const pipBtn = document.getElementById('pipBtn');
+const statusDiv = document.getElementById('status');
+
+let currentSpeed = 0;
+let streamInitialized = false;
+
+// Оптимізована функція: малює ОДИН кадр за запитом, а не крутиться постійно
+function drawSpeedFrame() {
+    // Чистий чорний фон (OLED-екрани на iPhone взагалі вимикають пікселі під ним)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Швидкість
+    ctx.fillStyle = '#34c759'; 
+    ctx.font = 'bold 70px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(currentSpeed, canvas.width / 2, canvas.height / 2 - 10);
+
+    // Підпис
+    ctx.fillStyle = '#aeaeae';
+    ctx.font = '20px -apple-system, sans-serif';
+    ctx.fillText('км/год', canvas.width / 2, canvas.height / 2 + 50);
+}
+
+function initStream() {
+    drawSpeedFrame();
+    
+    // КРИТИЧНО ДЛЯ БАТАРЕЇ: Захоплюємо потік з частотою всього 1 кадр на секунду!
+    const stream = canvas.captureStream(1); 
+    video.srcObject = stream;
+    
+    streamInitialized = true;
+    pipBtn.removeAttribute('disabled');
+    statusDiv.innerText = "GPS готовий до енергоефективного тесту!";
+    
+    // Про всяк випадок оновлюємо картинку раз на секунду, навіть якщо стоїмо на місці
+    setInterval(drawSpeedFrame, 1000);
+}
+
+if ('geolocation' in navigator) {
+    navigator.geolocation.watchPosition(
+        (position) => {
+            if (position.coords.speed !== null && position.coords.speed !== undefined) {
+                currentSpeed = Math.round(position.coords.speed * 3.6);
+            } else {
+                currentSpeed = 0;
+            }
+            
+            // Якщо потік запущено — просто оновлюємо цифру на екрані
+            if (streamInitialized) {
+                drawSpeedFrame();
+            } else {
+                initStream();
+            }
+        },
+        (error) => { statusDiv.innerText = `Помилка: ${error.message}`; },
+        // Оптимальні налаштування GPS, щоб не перевантажувати датчик
+        { 
+            enableHighAccuracy: true, 
+            maximumAge: 1000, // Дозволяємо кешувати позицію на 1 секунду
+            timeout: 5000 
+        }
+    );
+}
+
+// Логіка кнопки залишається такою ж
+pipBtn.addEventListener('click', async () => {
+    video.classList.add('visible');
+    try {
+        await video.play();
+        if (video.webkitSetPresentationMode) {
+            video.webkitSetPresentationMode("picture-in-picture");
+        } else if (document.pictureInPictureEnabled) {
+            await video.requestPictureInPicture();
+        }
+    } catch (err) {
+        console.error(err);
+    }
+});
