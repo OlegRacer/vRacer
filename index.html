@@ -28,9 +28,12 @@ html,body{margin:0;padding:0;height:100%;width:100%;
   display:flex;align-items:center;gap:5px;
   padding:max(5px,env(safe-area-inset-top)) 8px 5px;
   background:#000000;border-bottom:1px solid var(--line);
-  height:var(--th);}
+  height:var(--th);
+  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tb::-webkit-scrollbar{display:none;}
 .pill{border:1px solid var(--line);border-radius:6px;padding:5px 9px;
-  font-size:12px;color:var(--muted);background:#0d0d0f;white-space:nowrap;cursor:pointer;}
+  font-size:12px;color:var(--muted);background:#0d0d0f;white-space:nowrap;cursor:pointer;
+  flex-shrink:0;}
 .pill.on{color:#9be8ff;border-color:#2b6f7a;}
 .pill.ok{color:#4ade80;border-color:rgba(74,222,128,0.4);}
 .pill.err{color:#ff8080;border-color:rgba(255,77,77,0.3);}
@@ -54,6 +57,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;
 #eb.a{color:#000;background:var(--cyan);border-color:var(--cyan);font-weight:700;}
 html.ar-landscape{--th:36px;}
 html.ar-landscape .pill{font-size:11px;padding:3px 7px;}
+.pill.on{border-color:var(--cyan);color:var(--cyan);}
 html.ar-landscape #eb{font-size:11px;padding:3px 9px;}
 
 /* GRID */
@@ -79,10 +83,12 @@ html.ar-landscape #gi{grid-template-columns:repeat(12,1fr);grid-auto-rows:minmax
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:6px;overflow:hidden;-webkit-touch-callout:none;will-change:auto;
   transition:background .4s,border-color .4s;}
+
 .tile.s1{grid-column:span 1;grid-row:span 1;}
 .tile.s22{grid-column:span 2;grid-row:span 2;}
 .tile.s21{grid-column:span 2;grid-row:span 1;}
 .tile.s41{grid-column:span 2;grid-row:span 1;} /* портрет: fallback, поводиться як s21 */
+.tile.s23{grid-column:span 2;grid-row:span 3;} /* 2 в ширину × 3 у висоту — для великої плитки карти */
 
 /* ВІДЕО-ПЛИТКА: нормальний вигляд за замовчуванням в обох орієнтаціях.
    При активації реального PiP (клас .pip-active) форма ВІДЕО НЕ змінюється —
@@ -103,6 +109,7 @@ html.ar-landscape #gi{grid-template-columns:repeat(12,1fr);grid-auto-rows:minmax
 html.ar-landscape .video-tile{grid-column:span 8;grid-row:span 2;}
 html.ar-landscape .tile.s22{grid-column:span 4;grid-row:span 2;}
 html.ar-landscape .tile.s41{grid-column:span 4;grid-row:span 1;}
+html.ar-landscape .tile.s23{grid-column:span 4;grid-row:span 3;}
 /* PiP більше не змінює форму відео — воно завжди залишається такого ж
    розміру/пропорцій, як звичайна картка (width:100%/height:100% з базового
    правила #pip-video нижче по коду вже це забезпечує). */
@@ -157,6 +164,44 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
 .gbg{fill:none;stroke:rgba(255,255,255,0.05);stroke-width:5;}
 .gfg{fill:none;stroke:var(--pc,var(--cyan));stroke-width:5;stroke-linecap:round;}
 
+/* ── ПЛИТКА "КАРТА" (Leaflet, 2x2) ──
+   Карта живе ВСЕРЕДИНІ звичайної плитки (той самий .tile/.s22, ніяка сітка
+   не змінюється) — просто замість mkF()/mkG() рендериться Leaflet-контейнер
+   на всю площу плитки, без підпису/риски (карта сама по собі зрозуміла). */
+.tile.map-tile{padding:0;overflow:hidden;}
+/* ── Обертання карти "вперед = вгору" (як навігація в Google Maps) ──
+   Leaflet сам по собі не вміє обертати карту (немає плагіна) — тому карту
+   обертаємо звичайним CSS transform:rotate(). Але звичайний прямокутний
+   контейнер при повороті показував би порожні трикутники по кутах —
+   тому реальний Leaflet-контейнер (.map-tile-inner) робимо КВАДРАТНИМ,
+   зі стороною = діагоналі видимої плитки (див. sizeRotatedMapContainer у
+   JS), і ховаємо все зайве зовнішнім .map-tile-viewport{overflow:hidden}. */
+.map-tile-viewport{position:absolute;inset:0;overflow:hidden;touch-action:none;border-radius:inherit;}
+.map-tile-inner{position:absolute;top:50%;left:50%;touch-action:none;}
+.map-tile-viewport .leaflet-control-container{display:none;} /* прибираємо зайві системні контроли Leaflet — це маленька плитка, не повноекранна карта */
+/* У режимі редагування карта має бути СТАТИЧНОЮ (не ловити власні жести),
+   інакше тач по ній конфліктує з логікою "два прицільні тапи" на переставляння. */
+.tile.ed .map-tile-viewport{pointer-events:none;}
+/* Тройний тап по карті → повноекранний огляд маршруту. Сітку не чіпаємо —
+   position:fixed просто виводить плитку з потоку і кладе її понад усім
+   іншим; решта дашборду лишається як є під нею, просто не видно. */
+.tile.map-fullscreen{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;
+  z-index:5000;border-radius:0!important;}
+/* Темна тема карти — просто інвертуємо кольори звичайних (світлих) OSM-тайлів,
+   без окремого набору "нічних" тайлів. */
+.map-tile-viewport.map-theme-dark{filter:invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);}
+/* Перемикач-тогл (iOS-стиль) — використовується для теми карти. */
+.tsw{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;}
+.tsw input{opacity:0;width:0;height:0;position:absolute;}
+.tsw .sldr{position:absolute;inset:0;background:#333;border-radius:26px;transition:background .2s;cursor:pointer;}
+.tsw .sldr:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s;}
+.tsw input:checked + .sldr{background:var(--cyan);}
+.tsw input:checked + .sldr:before{transform:translateX(20px);}
+.map-tile-badge{position:absolute;top:6px;left:8px;z-index:500;font-size:9px;letter-spacing:1px;
+  color:#fff;background:rgba(0,0,0,0.55);padding:2px 6px;border-radius:6px;pointer-events:none;text-transform:uppercase;}
+.map-tile-offline{color:#4ade80;}
+.map-tile-online{color:#ffd23f;}
+
 /* MODALS */
 .mb{position:fixed;inset:0;background:rgba(0,0,0,0.82);
   backdrop-filter:blur(4px);z-index:100;display:flex;align-items:flex-end;
@@ -172,6 +217,24 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
 .mh h3{margin:0;font-size:14px;letter-spacing:1px;font-weight:600;}
 .mc2{border:none;background:rgba(255,255,255,0.05);color:var(--text);
   width:26px;height:26px;border-radius:50%;font-size:14px;cursor:pointer;}
+
+/* ── Власна консоль у застосунку ──
+   Bluefy не завжди зручно показує свою нативну консоль (треба лізти в
+   підменю "..."), тому робимо власну, видиму прямо в застосунку. */
+.dbgc{display:none;position:fixed;inset:0;z-index:9999;background:#000;flex-direction:column;
+  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+.dbgc.sh{display:flex;}
+.dbgc-h{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;border-bottom:1px solid var(--line);flex-shrink:0;background:#000;}
+.dbgc-h b{font-size:14px;letter-spacing:1px;}
+.dbgc-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:8px 10px;font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;line-height:1.45;}
+.dbgc-line{white-space:pre-wrap;word-break:break-word;padding:3px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);}
+.dbgc-line.warn{color:var(--amber);}
+.dbgc-line.error{color:var(--red);}
+.dbgc-line.log{color:#ccc;}
+
 .mbody{overflow-y:auto;padding:6px 11px;flex:1;}
 .gt{font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;padding:7px 5px 3px;}
 .pl{display:flex;flex-direction:column;gap:2px;}
@@ -240,15 +303,25 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
 .cam-radar-badge .c-sign.cam-type-redlight{background:#1a1a1a;border-color:var(--red);font-size:12px;}
 .cam-radar-badge .c-sign.cam-type-tech{background:#1e1b4b;border-color:#818cf8;font-size:11px;}
 </style>
+<!-- Leaflet — карта для нової плитки "Карта" (2x2). sql.js — читання локальних
+     .mbtiles-файлів (це SQLite-бази) прямо в браузері, без бекенда.
+     cdnjs (а не unpkg) — той самий CDN, що вже перевірено працює в
+     TripViewer.html; unpkg.com виявився недоступним у цій мережі/Bluefy. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
 <div class="tb">
   <button id="cb" class="pill">🔵 Connect</button>
   <div id="bs" class="pill"></div>
-  <button id="resetBtn" class="pill">Скинути</button>
   <button id="pipBtnTop" class="pill">PiP</button>
   <button id="tripBtn" class="pill">Trip</button>
+  <button id="routeBtnTop" class="pill" onclick="toggleRouteBtn()">Маршрут</button>
+  <button id="sndBtnTop" class="pill" onclick="toggleSoundBtn()">Звук</button>
+  <button id="consoleBtnTop" class="pill" onclick="toggleConsolePanel()">Консоль</button>
   <button id="eb">Налаштувати</button>
 </div>
 
@@ -265,12 +338,13 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
 
 <div class="mb" id="em">
   <div class="ms">
-    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 20.07.2026 21:47)</span></h3><button class="mc2" id="emc">✕</button></div>
+    <div class="mh"><h3>Налаштувати <span style="font-size:11px;font-weight:400;color:var(--muted);">(збірка: 26.07.2026 14:05)</span></h3><button class="mc2" id="emc">✕</button></div>
     <div class="tbar">
       <div class="tab a" id="t0" onclick="st(0)">ЕКРАН</div>
       <div class="tab" id="t1" onclick="st(1)">СИГНАЛИ</div>
       <div class="tab" id="t2" onclick="st(2)">ПАДІННЯ</div>
       <div class="tab" id="t3" onclick="st(3)">ВИГЛЯД</div>
+      <div class="tab" id="t4" onclick="st(4)">КАРТА</div>
     </div>
     <div class="mbody" id="emb"></div>
   </div>
@@ -285,12 +359,84 @@ html.ar-landscape .tile.s1 .tl,html.ar-landscape .tile.s21 .tl{font-size:9px;}
 
 <canvas id="pip-canvas" style="display: none;"></canvas>
 
+<div class="dbgc" id="tripViewModal">
+  <div class="dbgc-body" id="tripViewBody" style="padding:0;"></div>
+</div>
+
+<div class="dbgc" id="tripOrderModal">
+  <div class="dbgc-h">
+    <b>Порядок графіків</b>
+    <button class="mc2" onclick="closeTripOrderModal()">✕</button>
+  </div>
+  <div class="dbgc-body" id="tripOrderList" style="padding:10px;"></div>
+</div>
+
+<div class="dbgc" id="dbgConsolePanel">
+  <div class="dbgc-h">
+    <b>Консоль</b>
+    <div style="display:flex;gap:6px;">
+      <button class="ab" style="background:#222;color:#fff;" onclick="copyConsoleLog()">📋 Копіювати</button>
+      <button class="ab dn" onclick="clearConsoleLog()">🗑 Очистити</button>
+      <button class="mc2" onclick="toggleConsolePanel()">✕</button>
+    </div>
+  </div>
+  <div class="dbgc-body" id="dbgc-body"></div>
+</div>
+
 <script>
+// ══════════════════════════════════════════════════════════════════════
+// ВЛАСНА КОНСОЛЬ — ставимо це ПЕРШИМ рядком скрипта, щоб перехопити геть
+// усі console.log/warn/error, які трапляться далі (включно з усіма нашими
+// діагностичними [mbtiles]-логами). Кнопка "Консоль" у топбарі показує
+// цю панель — не треба лізти в підменю Bluefy.
+// ══════════════════════════════════════════════════════════════════════
+const _consoleLog=[];
+const _origConsole={log:console.log,warn:console.warn,error:console.error};
+function _pushConsoleLine(type,args){
+  const line=Array.from(args).map(a=>{
+    if(a instanceof Error) return a.message;
+    if(typeof a==='object'){ try{ return JSON.stringify(a); }catch(e){ return String(a); } }
+    return String(a);
+  }).join(' ');
+  const t=new Date();
+  const stamp=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0');
+  _consoleLog.push({type,line,stamp});
+  if(_consoleLog.length>400) _consoleLog.shift(); // не даємо рости безмежно
+  const panel=document.getElementById('dbgConsolePanel');
+  if(panel && panel.classList.contains('sh')) renderConsolePanel();
+}
+console.log=function(...args){ _origConsole.log.apply(console,args); _pushConsoleLine('log',args); };
+console.warn=function(...args){ _origConsole.warn.apply(console,args); _pushConsoleLine('warn',args); };
+console.error=function(...args){ _origConsole.error.apply(console,args); _pushConsoleLine('error',args); };
+window.addEventListener('error', e=>{ _pushConsoleLine('error', [(e.message||'Error')+' @ '+(e.filename||'')+':'+(e.lineno||'')]); });
+window.addEventListener('unhandledrejection', e=>{ _pushConsoleLine('error', ['Unhandled promise rejection: '+(e.reason&&e.reason.message||e.reason)]); });
+function toggleConsolePanel(){
+  const p=document.getElementById('dbgConsolePanel');
+  if(!p) return;
+  p.classList.toggle('sh');
+  if(p.classList.contains('sh')) renderConsolePanel();
+}
+function renderConsolePanel(){
+  const body=document.getElementById('dbgc-body');
+  if(!body) return;
+  body.innerHTML=_consoleLog.map(e=>'<div class="dbgc-line '+e.type+'">['+e.stamp+'] '+
+    e.line.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>').join('') || '<div class="dbgc-line log">(поки що порожньо)</div>';
+  body.scrollTop=body.scrollHeight;
+}
+function clearConsoleLog(){ _consoleLog.length=0; renderConsolePanel(); }
+async function copyConsoleLog(){
+  const text=_consoleLog.map(e=>'['+e.stamp+'] '+e.type.toUpperCase()+': '+e.line).join('\n');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); sht('Скопійовано в буфер'); }
+    else throw new Error('no clipboard api');
+  }catch(e){ console.warn('Копіювання в буфер не спрацювало:', e); alert(text); }
+}
+
 const P={
   RPM:      {n:'RPM',      o:-1, s:0,sc:1,    b:0,  u:'rpm', mn:0,   mx:9000,c:'#ffd23f',src:'ble'},
   T_Eng:    {n:'T_Eng',   o:-1, s:0,sc:1,    b:0,  u:'°C',  mn:0,   mx:130, c:'#3b82f6',src:'ble'},
   TPS:      {n:'TPS%',    o:-1, s:0,sc:1,    b:0,  u:'%',   mn:0,   mx:100, c:'#37e0e6',src:'ble'},
-  GPS:      {n:'GPS',     o:-1, s:0,sc:1,    b:0,  u:'km/h',mn:0,   mx:300, c:'#37e0e6',src:'gps'},
+  GPS:      {n:'GPS',     o:-1, s:0,sc:1,    b:0,  u:'km/h',mn:0,   mx:300, c:'#ffffff',src:'gps'},
   Volt:     {n:'Volt',    o:-1, s:0,sc:1,    b:0,  u:'V',   mn:10,  mx:16,  c:'#4ade80',src:'ble'},
   T_Air:    {n:'T_Air',   o:-1, s:0,sc:1,    b:0,  u:'°C',  mn:-20, mx:80,  c:'#06b6d4',src:'ble'},
   Inj_Rate: {n:'Inj Rate',o:-1, s:0,sc:1,    b:0,  u:'мс',   mn:0,   mx:25,  c:'#ff9f43',src:'ble'},
@@ -298,6 +444,10 @@ const P={
   Alt:      {n:'GPS H',    o:-1, s:0,sc:1,    b:0,  u:'м',    mn:0,  mx:3000,c:'#37e0e6',src:'gps'},
   Gforce:   {n:'G-Сила',   o:-1, s:0,sc:1,    b:0,  u:'G',    mn:-1,  mx:2,   c:'#ff6b6b',src:'sensor'},
   Lean:     {n:'Кут нахилу',o:-1,s:0,sc:1,    b:0,  u:'°',    mn:0, mx:90,  c:'#f472b6',src:'sensor'},
+  // Не звичайний телеметричний параметр — просто щоб плитка карти з'явилась
+  // у тому самому списку "Додати нову плитку" (mkTile/cpk дивляться саме
+  // в P). u/mn/mx тут не використовуються — рендер карти в mkMapTile().
+  MapTile:  {n:'Карта',     o:-1,s:0,sc:1,    b:0,  u:'',     mn:0, mx:0,   c:'#4ade80',src:'gps'},
 };
 const PG=[
   {t:'Всі параметри', k:['RPM','T_Eng','TPS','GPS','Volt','T_Air','Inj_Rate','MAP','Alt','Gforce','Lean']},
@@ -694,6 +844,7 @@ function startGPS(){
       _lastLat=pos.coords.latitude; _lastLon=pos.coords.longitude;
       _lastAlt=pos.coords.altitude; _lastSpeedMps=pos.coords.speed;
       updateCameraRadar(pos.coords.latitude, pos.coords.longitude);
+      if(typeof updateAllMapTiles==='function') updateAllMapTiles(pos.coords.latitude, pos.coords.longitude, pos.coords.heading);
       ud();ca();
     },()=>{V.GPS='0';V.Alt='--';ud();},{enableHighAccuracy:true,maximumAge:1000});
   },()=>{V.GPS='0';V.Alt='--';ud();},{enableHighAccuracy:false,timeout:5000});
@@ -781,23 +932,24 @@ function tripStart(){
   sht('Запис поїздки почато');
 }
 
+let lastTripLog=[]; // копія останньої завершеної поїздки — живе тут навіть після того, як tripStart() обнулить tripLog для нової поїздки
 function tripStop(){
   tripRecording = false;
   if(tripTimerId){ clearInterval(tripTimerId); tripTimerId=null; }
   const btn=document.getElementById('tripBtn');
   if(btn){ btn.textContent='Trip'; btn.classList.remove('rec'); }
   if(tripLog.length > 1){
-    if(confirm('Запис зупинено ('+tripLog.length+' точок). Завантажити GPX-файл поїздки?')){
-      tripExportGPX();
-    }
+    lastTripLog = tripLog.slice();
+    openTripView(); // одразу перегляд із оперативної пам'яті — без експорту/імпорту GPX-файлу
   } else {
-    sht('Запис зупинено (замало точок для експорту)');
+    sht('Запис зупинено (замало точок для перегляду)');
   }
 }
 
-async function tripExportGPX(){
-  if(!tripLog.length) return;
-  const pts = tripLog.map(p=>{
+async function tripExportGPX(log){
+  log = log || tripLog;
+  if(!log.length) return;
+  const pts = log.map(p=>{
     if(p.lat==null || p.lon==null) return ''; // GPX вимагає координати — без них точку не пишемо
     const timeIso = new Date(p.t).toISOString();
     const eleTag = (p.alt!=null) ? `<ele>${p.alt.toFixed(1)}</ele>` : '';
@@ -813,12 +965,12 @@ async function tripExportGPX(){
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n`+
     `<gpx version="1.1" creator="vRacer BLE Dashboard" xmlns="http://www.topografix.com/GPX/1/1">\n`+
     `  <trk>\n`+
-    `    <name>vRacer Trip ${new Date(tripLog[0].t).toLocaleString()}</name>\n`+
+    `    <name>vRacer Trip ${new Date(log[0].t).toLocaleString()}</name>\n`+
     `    <trkseg>\n${pts}\n    </trkseg>\n`+
     `  </trk>\n`+
     `</gpx>`;
 
-  const startD = new Date(tripLog[0].t);
+  const startD = new Date(log[0].t);
   const pad2 = n => String(n).padStart(2,'0');
   const stamp = startD.getFullYear()+'-'+pad2(startD.getMonth()+1)+'-'+pad2(startD.getDate())+
     '_'+pad2(startD.getHours())+'-'+pad2(startD.getMinutes())+'-'+pad2(startD.getSeconds());
@@ -857,10 +1009,432 @@ async function tripExportGPX(){
   setTimeout(()=>URL.revokeObjectURL(url), 5000);
 }
 
-try{
-  document.getElementById('tripBtn').addEventListener('click', ()=>{
-    if(tripRecording) tripStop(); else tripStart();
+/* ══════════════════════════════════════════════════════════════════════
+   ПЕРЕГЛЯД ПОЇЗДКИ З ОПЕРАТИВНОЇ ПАМ'ЯТІ (без експорту/імпорту GPX)
+   ══════════════════════════════════════════════════════════════════════
+   tripLog вже має практично ту саму структуру полів, що й точки, які
+   TripViewer.html дістає з розпарсеного GPX — тому переносимо сюди ту саму
+   ідею (карта + маркери падінь/максимумів + підсумкова статистика), тільки
+   напряму з масиву в пам'яті, без проміжного файлу. Бонус: карта тут
+   використовує наш ЖЕ HybridTileLayer, тобто працює офлайн, чого немає в
+   окремому TripViewer.html. */
+function haversineDist(lat1,lon1,lat2,lon2){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+// Ті самі кольори, що й у P (для візуальної узгодженості з тайлами дашборду).
+const TRIP_PARAMS=[
+  {key:'spd',  label:'Швидкість',   unit:'км/год', color:P.GPS.c,      dec:0, get:p=>p.spd!=null?p.spd*3.6:null},
+  {key:'rpm',  label:'RPM',         unit:'',       color:P.RPM.c,      dec:0, get:p=>p.rpm},
+  {key:'tps',  label:'TPS',         unit:'%',      color:P.TPS.c,      dec:0, get:p=>p.tps},
+  {key:'volt', label:'Напруга',     unit:'В',      color:P.Volt.c,     dec:1, get:p=>p.volt},
+  {key:'tEng', label:'T Двигуна',   unit:'°C',     color:P.T_Eng.c,    dec:0, get:p=>p.tEng},
+  {key:'tAir', label:'T Повітря',   unit:'°C',     color:P.T_Air.c,    dec:0, get:p=>p.tAir},
+  {key:'map',  label:'MAP',         unit:'',       color:P.MAP.c,      dec:0, get:p=>p.map},
+  {key:'inj',  label:'Inj Rate',    unit:'',       color:P.Inj_Rate.c, dec:0, get:p=>p.inj},
+  {key:'lean', label:'Кут нахилу',  unit:'°',      color:P.Lean.c,     dec:0, get:p=>{
+    if(p.lean==null) return null;
+    const a=Math.abs(p.lean);
+    return a>=90 ? null : a; // 90°+ — той самий фільтр помилки сенсора, що й у TripViewer/плитці карти
+  }},
+  {key:'g',    label:'G-сила',      unit:'g',      color:P.Gforce.c,   dec:2, get:p=>p.g},
+  {key:'alt',  label:'Висота',      unit:'м',      color:P.Alt.c,      dec:0, get:p=>p.alt},
+];
+const TRIP_MAP_SKIP=new Set(['volt','inj','map']); // ті самі, що не показуємо на карті для маршруту (нецікаво дивитись)
+
+// ── Порядок плиток-графіків поїздки, який обирає користувач (той самий
+// підхід, що й у TripViewer.html) — зберігається окремо від розкладки
+// дашборду, переживає перезапуск. ──
+function loadTripParamOrder(){
+  const allKeys=TRIP_PARAMS.map(p=>p.key);
+  const saved=lg('tripParamOrder');
+  if(!Array.isArray(saved)) return allKeys.slice();
+  const cleaned=saved.filter(k=>allKeys.includes(k));
+  allKeys.forEach(k=>{ if(!cleaned.includes(k)) cleaned.push(k); });
+  return cleaned;
+}
+let tripParamOrder=loadTripParamOrder();
+function saveTripParamOrder(){ ls('tripParamOrder', tripParamOrder); }
+function orderedTripParams(){ return tripParamOrder.map(k=>TRIP_PARAMS.find(p=>p.key===k)).filter(Boolean); }
+function moveTripParam(key,delta){
+  const i=tripParamOrder.indexOf(key), j=i+delta;
+  if(i<0||j<0||j>=tripParamOrder.length) return;
+  [tripParamOrder[i],tripParamOrder[j]]=[tripParamOrder[j],tripParamOrder[i]];
+  saveTripParamOrder();
+  renderTripOrderList();
+  if(tripViewCurrentLog){ buildTripTiles(tripViewCurrentLog); seekTripTo(tripScrubIndex); } // якщо поїздка вже відкрита — перебудувати одразу
+}
+function renderTripOrderList(){
+  const wrap=document.getElementById('tripOrderList');
+  wrap.innerHTML=orderedTripParams().map((tp,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:6px;">
+      <span style="width:9px;height:9px;border-radius:50%;background:${tp.color};flex-shrink:0;"></span>
+      <span style="flex:1;font-size:14px;">${tp.label}</span>
+      <button class="ab" style="background:#222;color:#fff;padding:4px 10px;" ${i===0?'disabled':''} onclick="moveTripParam('${tp.key}',-1)">↑</button>
+      <button class="ab" style="background:#222;color:#fff;padding:4px 10px;" ${i===tripParamOrder.length-1?'disabled':''} onclick="moveTripParam('${tp.key}',1)">↓</button>
+    </div>`).join('');
+}
+function openTripOrderModal(){
+  renderTripOrderList();
+  document.getElementById('tripOrderModal').classList.add('sh');
+}
+function closeTripOrderModal(){ document.getElementById('tripOrderModal').classList.remove('sh'); }
+
+let tripViewMapObj=null;
+let tripViewCurrentLog=null; // лог, який зараз показано (lastTripLog АБО щойно імпортований з файлу) — саме його експортує кнопка GPX
+function closeTripView(){
+  document.getElementById('tripViewModal').classList.remove('sh');
+  if(tripViewMapObj){ try{ tripViewMapObj.remove(); }catch(e){} tripViewMapObj=null; }
+}
+// Швидкий сценарій (наприклад, одразу після Stop) — одразу показує задану поїздку.
+// Шапка "Поїздка/Порядок/GPX/✕" тепер генерується як ПЕРШИЙ рядок усередині
+// того самого скролу (renderTripView/openTripViewFilePicker нижче) — а не
+// окремий блок із власною анімацією згортання. Тому вона ховається просто
+// природним скролом (перше, що йде за екран) і з'являється тільки тоді,
+// коли долистав назад до самого верху — без жодного JS-таймера чи
+// transition, тому дриґання фізично неможливе.
+
+function openTripView(){
+  if(!lastTripLog.length){ sht('Немає збереженої поїздки в пам\'яті'); return; }
+  document.getElementById('tripViewModal').classList.add('sh');
+  renderTripView(lastTripLog);
+}
+// Довге натискання на Trip — порожній переглядач із вибором файлу (як окремий
+// TripViewer.html), а не одразу остання поїздка: щоб можна було відкрити
+// БУДЬ-ЯКИЙ раніше збережений GPX, не тільки те, що лишилось у пам'яті
+// поточної сесії.
+function openTripViewFilePicker(){
+  document.getElementById('tripViewModal').classList.add('sh');
+  tripViewCurrentLog=null;
+  if(tripViewMapObj){ try{ tripViewMapObj.remove(); }catch(e){} tripViewMapObj=null; }
+  document.getElementById('tripViewBody').innerHTML=tripHeaderHTML(false)+`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:14px;padding:24px;text-align:center;">
+      <div style="color:var(--muted);font-size:13px;">Немає відкритої поїздки</div>
+      <div style="color:var(--muted);font-size:11px;max-width:280px;">Маршрут з Google Maps → GPX: <a href="https://www.maptogpx.com/" target="_blank" style="color:var(--cyan);">maptogpx.com</a></div>
+      <label class="ab pr" style="text-align:center;">
+        📂 Обрати GPX-файл
+        <input type="file" id="tripViewFileInput" accept=".gpx,application/gpx+xml,text/xml,application/xml,*/*" style="display:none;">
+      </label>
+      ${lastTripLog.length ? '<button class="ab" style="background:#222;color:#fff;" onclick="renderTripView(lastTripLog)">🕓 Остання поїздка з памʼяті</button>' : ''}
+    </div>`;
+  document.getElementById('tripViewFileInput').addEventListener('change', async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      const text=await f.text();
+      const log=parseVracerGPX(text);
+      if(!log.length) throw new Error('у файлі не знайдено жодної точки маршруту');
+      renderTripView(log);
+    }catch(err){ sht('Помилка читання GPX: '+err.message); }
   });
+}
+// Читає GPX, який пише наш власний tripExportGPX() (з розширенням
+// <vRacer:tele .../>) — назад у той самий формат точок, що й tripLog.
+function parseVracerGPX(text){
+  const xml=new DOMParser().parseFromString(text,'application/xml');
+  const attrNum=(el,name)=>{
+    if(!el) return null;
+    const v=el.getAttribute(name);
+    if(v===null||v==='') return null;
+    const n=parseFloat(v);
+    return isNaN(n)?null:n;
+  };
+  return Array.from(xml.querySelectorAll('trkpt')).map(pt=>{
+    const lat=parseFloat(pt.getAttribute('lat')), lon=parseFloat(pt.getAttribute('lon'));
+    const eleEl=pt.querySelector('ele'), timeEl=pt.querySelector('time');
+    const extEl=pt.querySelector('extensions');
+    const teleEl=extEl?extEl.firstElementChild:null;
+    return {
+      t: timeEl ? new Date(timeEl.textContent).getTime() : Date.now(),
+      lat, lon,
+      alt: eleEl ? parseFloat(eleEl.textContent) : null,
+      spd: attrNum(teleEl,'spdMps'),
+      rpm: attrNum(teleEl,'rpm'), tps: attrNum(teleEl,'tps'), volt: attrNum(teleEl,'volt'),
+      tEng: attrNum(teleEl,'tEng'), tAir: attrNum(teleEl,'tAir'), map: attrNum(teleEl,'map'),
+      inj: attrNum(teleEl,'inj'), lean: attrNum(teleEl,'lean'), g: attrNum(teleEl,'g'),
+      fall: (teleEl && teleEl.getAttribute('fall')) || ''
+    };
+  }).filter(p=>!isNaN(p.lat) && !isNaN(p.lon));
+}
+// ── Стан скрабера/відтворення (повний паритет з TripViewer.html) ──
+let tripScrubIndex=0, tripPlaying=false, tripPlayTimer=null;
+let tripMarker=null;
+const tripCharts={};
+const FALL_TYPE_LABEL={ 'tipover':'Нахил (tipover)', 'gspike-confirmed':'Удар + нахил (G-сплеск)' };
+
+// Шапка "Поїздка/Порядок/GPX/✕" — генерується як ПЕРШИЙ рядок усередині
+// самого скролу (не окремий елемент над ним), тому ховається просто
+// природним скролом вниз (перше, що йде за екран) і з'являється, тільки
+// коли долистав назад до самого верху. showExport — чи показувати кнопку
+// GPX (нема сенсу, поки жодної поїздки не відкрито).
+function tripHeaderHTML(showExport){
+  return `<div class="dbgc-h">
+    <b>Поїздка</b>
+    <div style="display:flex;gap:6px;">
+      <button class="ab" style="background:#222;color:#fff;" onclick="openTripOrderModal()">↕ Порядок</button>
+      ${showExport?'<button class="ab" style="background:#222;color:#fff;" onclick="tripExportGPX(tripViewCurrentLog)">⬇️ GPX</button>':''}
+      <button class="mc2" onclick="closeTripView()">✕</button>
+    </div>
+  </div>`;
+}
+
+function renderTripView(log){
+  tripViewCurrentLog=log;
+  if(tripPlaying) toggleTripPlay();
+  Object.values(tripCharts).forEach(c=>{ try{c.destroy();}catch(e){} });
+  Object.keys(tripCharts).forEach(k=>delete tripCharts[k]);
+  // ВАЖЛИВО: раніше тут був вкладений flex-контейнер (#tripViewBody
+  // flex-column, а всередині #tripTiles ще й свій flex:1+overflow-y:auto) —
+  // класична пастка Safari/WebKit: вкладеному flex-елементу з overflow
+  // потрібен ще й min-height:0, інакше він просто росте під контент і
+  // скрол "застряє". Тепер #tripViewBody — ОДИН звичайний скрол (сам
+  // .dbgc-body вже має overflow-y:auto), а карта й панель відтворення —
+  // "липкі" (position:sticky), щоб лишались на екрані, поки прокручуєш
+  // усі 11 графіків параметрів нижче. Шапка (tripHeaderHTML) — НЕ липка,
+  // навмисно звичайний перший рядок потоку, щоб ховалась першою і без
+  // жодної анімації (яка й спричиняла дриґання в попередній версії).
+  document.getElementById('tripViewBody').innerHTML=tripHeaderHTML(true)+`
+    <div id="tripViewMap" style="width:100%;height:32vh;position:sticky;top:0;z-index:5;"></div>
+    <div id="tripFallList"></div>
+    <div id="tripViewStats" style="padding:10px;display:flex;flex-wrap:wrap;gap:8px;"></div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#000;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:32vh;z-index:4;">
+      <button class="ab" id="tripPlayBtn" style="background:#222;color:#fff;padding:5px 9px;width:auto;flex-shrink:0;font-size:12px;" onclick="toggleTripPlay()">▶</button>
+      <div id="tripScrubTrack" style="position:relative;flex:1;height:28px;display:flex;align-items:center;touch-action:none;cursor:pointer;">
+        <div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:#333;"></div>
+        <div id="tripScrubFill" style="position:absolute;left:0;height:4px;border-radius:2px;background:var(--cyan);width:0%;"></div>
+        <div id="tripScrubThumb" style="position:absolute;left:0%;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:#fff;box-shadow:0 0 3px rgba(0,0,0,0.6);"></div>
+      </div>
+      <span id="tripScrubTime" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap;">00:00</span>
+      <select id="tripSpeedSel" style="background:#111;color:#fff;border:1px solid var(--line);border-radius:6px;font-size:12px;flex-shrink:0;">
+        <option value="1">1×</option><option value="5">5×</option><option value="10" selected>10×</option><option value="25">25×</option>
+      </select>
+    </div>
+    <div id="tripTiles" style="padding:10px;display:flex;flex-direction:column;gap:10px;"></div>
+  `;
+  wireTripScrubTrack();
+
+  const geoPts=log.filter(p=>p.lat!=null && p.lon!=null);
+  const durSec=(log[log.length-1].t - log[0].t)/1000;
+  let distM=0;
+  for(let i=1;i<geoPts.length;i++) distM+=haversineDist(geoPts[i-1].lat,geoPts[i-1].lon,geoPts[i].lat,geoPts[i].lon);
+  const fallEvents=[];
+  log.forEach((p,i)=>{ if(p.fall) fallEvents.push({index:i,type:p.fall,elapsed:(p.t-log[0].t)/1000}); });
+  const fmtDur=s=>{ s=Math.round(Math.max(0,s)); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+    const pad=n=>String(n).padStart(2,'0');
+    return h>0 ? h+':'+pad(m)+':'+pad(sec) : pad(m)+':'+pad(sec); };
+
+  // ── Список тригерів падіння — клікабельний, як у TripViewer ──
+  const fallBox=document.getElementById('tripFallList');
+  if(fallEvents.length){
+    fallBox.innerHTML='<div style="padding:8px 10px 0;font-size:12px;color:var(--red);font-weight:700;">⚠ Тригери падіння ('+fallEvents.length+')</div>'+
+      fallEvents.map(ev=>`<div class="tripFallRow" data-idx="${ev.index}" style="display:flex;align-items:center;gap:8px;padding:7px 10px;margin:4px 10px 0;background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer;">
+        <span>⚠️</span><span style="flex:1;font-size:13px;">${FALL_TYPE_LABEL[ev.type]||ev.type}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);">${fmtDur(ev.elapsed)}</span>
+      </div>`).join('');
+    fallBox.querySelectorAll('.tripFallRow').forEach(row=>row.addEventListener('click',()=>seekTripTo(parseInt(row.dataset.idx))));
+  } else fallBox.innerHTML='';
+
+  // ── Підсумкова статистика ──
+  let statsHtml=statBox('Дистанція',(distM/1000).toFixed(1),'км')+
+    statBox('Тривалість',fmtDur(durSec),'')+
+    statBox('Тригери падіння',fallEvents.length,'',fallEvents.length>0?'var(--red)':'#4ade80');
+  orderedTripParams().forEach(tp=>{
+    let mx=-Infinity;
+    log.forEach(p=>{ const v=tp.get(p); if(v!=null && v>mx) mx=v; });
+    if(mx===-Infinity) return;
+    statsHtml+=statBox('Макс. '+tp.label, mx.toFixed(tp.dec), tp.unit, tp.color);
+  });
+  document.getElementById('tripViewStats').innerHTML=statsHtml;
+
+  // ── Карта (наш HybridTileLayer — на відміну від окремого TripViewer, працює й офлайн) ──
+  const mapEl=document.getElementById('tripViewMap');
+  if(tripViewMapObj){ try{ tripViewMapObj.remove(); }catch(e){} tripViewMapObj=null; }
+  tripMarker=null;
+  if(!geoPts.length || typeof L==='undefined' || !HybridTileLayer){
+    mapEl.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">'+
+      (geoPts.length?'Карта недоступна':'У цій поїздці немає GPS-координат')+'</div>';
+  } else {
+    mapEl.innerHTML='';
+    const map=L.map(mapEl,{zoomControl:false,attributionControl:false});
+    tripViewMapObj=map;
+    new HybridTileLayer({maxZoom:19,minZoom:2}).addTo(map);
+    const latlngs=geoPts.map(p=>[p.lat,p.lon]);
+    const line=L.polyline(latlngs,{color:'#37e0e6',weight:5,opacity:0.9}).addTo(map);
+    map.fitBounds(line.getBounds(),{padding:[20,20]});
+    // Скрабер-маркер — рухається слайдером/відтворенням/кліком по графіку.
+    tripMarker=L.circleMarker(latlngs[0],{radius:7,color:'#000',weight:2,fillColor:'#ffd23f',fillOpacity:1}).addTo(map);
+
+    log.forEach((p,i)=>{
+      if(!p.fall || p.lat==null) return;
+      L.circleMarker([p.lat,p.lon],{radius:9,color:'#fff',weight:2,fillColor:'#ff4d4d',fillOpacity:0.9})
+        .addTo(map).bindTooltip('⚠ '+(FALL_TYPE_LABEL[p.fall]||p.fall)).on('click',()=>seekTripTo(i));
+    });
+    TRIP_PARAMS.forEach(tp=>{
+      if(TRIP_MAP_SKIP.has(tp.key)) return;
+      let bestIdx=-1,bestVal=-Infinity;
+      log.forEach((p,i)=>{ if(p.lat==null) return; const v=tp.get(p); if(v!=null && v>bestVal){ bestVal=v; bestIdx=i; } });
+      if(bestIdx<0) return;
+      const p=log[bestIdx];
+      L.circleMarker([p.lat,p.lon],{radius:8,color:'#fff',weight:2,fillColor:tp.color,fillOpacity:0.9})
+        .addTo(map).bindTooltip('Макс. '+tp.label+': '+bestVal.toFixed(tp.dec)+' '+tp.unit).on('click',()=>seekTripTo(bestIdx));
+    });
+  }
+
+  buildTripTiles(log);
+  seekTripTo(0);
+}
+
+// ── Плитки-графіки (Chart.js), той самий підхід, що й у TripViewer ──
+function buildTripTiles(log){
+  const wrap=document.getElementById('tripTiles');
+  wrap.innerHTML='';
+  const labels=log.map((_,i)=>i);
+  orderedTripParams().forEach(tp=>{
+    const data=log.map(tp.get);
+    const hasData=data.some(v=>v!=null);
+    const tile=document.createElement('div');
+    tile.style.cssText='background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;';
+    tile.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="font-size:12px;display:flex;align-items:center;gap:6px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:${tp.color};display:inline-block;"></span>${tp.label}
+        </div>
+        <div><span id="tripVal-${tp.key}" style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${tp.color};">—</span>
+          <span style="font-size:11px;color:var(--muted);">${tp.unit}</span></div>
+      </div>
+      <div id="tripChartWrap-${tp.key}" style="position:relative;height:52px;">
+        <canvas id="tripChart-${tp.key}"></canvas>
+        <div id="tripLine-${tp.key}" style="position:absolute;top:0;bottom:0;width:2px;background:${tp.color};left:0;pointer-events:none;"></div>
+      </div>`;
+    wrap.appendChild(tile);
+    if(!hasData){
+      document.getElementById('tripChartWrap-'+tp.key).innerHTML='<div style="color:var(--muted);font-size:11px;padding-top:14px;text-align:center;">немає даних у поїздці</div>';
+      return;
+    }
+    try{
+      const ctx=document.getElementById('tripChart-'+tp.key).getContext('2d');
+      tripCharts[tp.key]=new Chart(ctx,{
+        type:'line',
+        data:{labels, datasets:[{data, borderColor:tp.color, borderWidth:1.4, pointRadius:0, tension:0.15, spanGaps:true}]},
+        options:{responsive:true, maintainAspectRatio:false, animation:false, interaction:{intersect:false},
+          scales:{x:{display:false}, y:{display:false}}, plugins:{legend:{display:false}, tooltip:{enabled:false}}}
+      });
+    }catch(e){
+      console.error('Графік '+tp.key+' не намалювався:', e);
+      document.getElementById('tripChartWrap-'+tp.key).innerHTML='<div style="color:var(--muted);font-size:11px;padding-top:14px;text-align:center;">графік недоступний</div>';
+    }
+    const wrapEl=document.getElementById('tripChartWrap-'+tp.key);
+    wrapEl.style.cursor='pointer';
+    wrapEl.addEventListener('click', e=>{
+      const rect=wrapEl.getBoundingClientRect();
+      const frac=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+      seekTripTo(Math.round(frac*(log.length-1)));
+    });
+  });
+}
+
+// ── Скраб: пересуває маркер на карті + значення й лінію на всіх графіках ──
+// ── Тап/перетягування будь-де по шкалі — власна реалізація замість
+// нативного <input type="range">, бо на iOS Safari тап по доріжці range-
+// повзунка НІЧОГО не робить (на відміну від десктопу) — працює лише
+// перетягування самого повзунка. Тут і тап, і перетягування працюють
+// однаково, в будь-якій точці шкали. ──
+function wireTripScrubTrack(){
+  const track=document.getElementById('tripScrubTrack');
+  if(!track) return;
+  let dragging=false;
+  const seekFromClientX=cx=>{
+    const log=tripViewCurrentLog;
+    if(!log || !log.length) return;
+    const rect=track.getBoundingClientRect();
+    const frac=Math.max(0,Math.min(1,(cx-rect.left)/rect.width));
+    seekTripTo(Math.round(frac*(log.length-1)));
+  };
+  track.addEventListener('pointerdown', e=>{
+    dragging=true;
+    try{ track.setPointerCapture(e.pointerId); }catch(err){}
+    seekFromClientX(e.clientX);
+  });
+  track.addEventListener('pointermove', e=>{ if(dragging) seekFromClientX(e.clientX); });
+  const stopDrag=()=>{ dragging=false; };
+  track.addEventListener('pointerup', stopDrag);
+  track.addEventListener('pointercancel', stopDrag);
+}
+function seekTripTo(index){
+  const log=tripViewCurrentLog;
+  if(!log || !log.length) return;
+  tripScrubIndex=Math.max(0, Math.min(log.length-1, index));
+  const p=log[tripScrubIndex];
+  if(tripMarker && p.lat!=null) tripMarker.setLatLng([p.lat,p.lon]);
+  const frac=log.length>1 ? tripScrubIndex/(log.length-1) : 0;
+  TRIP_PARAMS.forEach(tp=>{
+    const val=tp.get(p);
+    const valEl=document.getElementById('tripVal-'+tp.key);
+    if(valEl) valEl.textContent=(val==null)?'—':val.toFixed(tp.dec);
+    const lineEl=document.getElementById('tripLine-'+tp.key);
+    if(lineEl) lineEl.style.left=(frac*100)+'%';
+  });
+  const fillEl=document.getElementById('tripScrubFill');
+  const thumbEl=document.getElementById('tripScrubThumb');
+  if(fillEl) fillEl.style.width=(frac*100)+'%';
+  if(thumbEl) thumbEl.style.left=(frac*100)+'%';
+  const t0=log[0].t, t1=log[log.length-1].t;
+  const elapsed=(p.t!=null && t0!=null)?(p.t-t0)/1000:tripScrubIndex;
+  const total=(t1!=null && t0!=null)?(t1-t0)/1000:log.length-1;
+  const fmtDur=s=>{ s=Math.round(Math.max(0,s)); const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+    const pad=n=>String(n).padStart(2,'0');
+    return h>0 ? h+':'+pad(m)+':'+pad(sec) : pad(m)+':'+pad(sec); };
+  const timeEl=document.getElementById('tripScrubTime');
+  if(timeEl) timeEl.textContent=fmtDur(elapsed)+' / '+fmtDur(total);
+}
+
+// ── Відтворення поїздки в часі (1 точка логу = 1 реальна секунда × швидкість) ──
+function toggleTripPlay(){
+  const btn=document.getElementById('tripPlayBtn');
+  const log=tripViewCurrentLog;
+  if(tripPlaying){
+    tripPlaying=false; clearInterval(tripPlayTimer); tripPlayTimer=null;
+    if(btn) btn.textContent='▶';
+    return;
+  }
+  if(!log || !log.length) return;
+  if(tripScrubIndex>=log.length-1) tripScrubIndex=0;
+  tripPlaying=true; if(btn) btn.textContent='⏸';
+  const speedSel=document.getElementById('tripSpeedSel');
+  const speed=speedSel?(parseInt(speedSel.value)||10):10;
+  tripPlayTimer=setInterval(()=>{
+    if(tripScrubIndex>=log.length-1){ toggleTripPlay(); return; }
+    seekTripTo(tripScrubIndex+1);
+  }, 1000/speed);
+}
+
+function statBox(label,val,unit,color){
+  return `<div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:110px;flex:1;">
+    <div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">${label}</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;${color?'color:'+color+';':''}">${val}<span style="font-size:12px;color:var(--muted);margin-left:3px;">${unit}</span></div>
+  </div>`;
+}
+
+try{
+  const tripBtnEl=document.getElementById('tripBtn');
+  const TRIP_LONG_PRESS_MS=550;
+  let tripPressTimer=null, tripLongFired=false;
+  tripBtnEl.addEventListener('pointerdown',()=>{
+    tripLongFired=false;
+    tripPressTimer=setTimeout(()=>{
+      tripLongFired=true;
+      if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
+      openTripViewFilePicker(); // довге натискання — порожній переглядач із вибором GPX-файлу, як окремий TripViewer
+    },TRIP_LONG_PRESS_MS);
+  });
+  const cancelTripPress=()=>{ if(tripPressTimer){clearTimeout(tripPressTimer);tripPressTimer=null;} };
+  tripBtnEl.addEventListener('pointerup',()=>{
+    cancelTripPress();
+    if(!tripLongFired){ if(tripRecording) tripStop(); else tripStart(); }
+  });
+  tripBtnEl.addEventListener('pointerleave',cancelTripPress);
+  tripBtnEl.addEventListener('pointercancel',cancelTripPress);
 }catch(e){ console.error('tripBtn init failed:',e); }
 
 /* ── СЕНСОРИ ТЕЛЕФОНУ: G-СИЛА ТА КУТ НАХИЛУ ──
@@ -1102,25 +1676,22 @@ setInterval(()=>{
   }
 }, 300);
 
-let bDev=null,bChr=null,bConn=false,userDisconnected=false,reconnecting=false;
-const SVC='0000ffe0-0000-1000-8000-00805f9b34fb',CHR='0000ffe1-0000-1000-8000-00805f9b34fb';
-
-const CMD_ATSECU    = new Uint8Array([0x41,0x54,0x53,0x45,0x43,0x55,0x0d]);
-const CMD_PING      = new Uint8Array([0xfc,0x05,0x12,0x00,0xee]);
-const CMD_ZERO      = new Uint8Array([0x00,0x00,0x00]);
-const CMD_FIRMWARE  = new Uint8Array([0xfc,0x05,0x36,0x00,0xca]);
-const CMD_UNK50     = new Uint8Array([0xfc,0x05,0x50,0x00,0xb0]);
-const CMD_SUBSCRIBE = new Uint8Array([
-  0xfc,0x05,0x10,0x79,0x08,0x00,0x02,0x01,0x00,0x04,0x01,0x00,0x07,0x01,0x00,0x08,
-  0x01,0x00,0x09,0x01,0x00,0x0a,0x01,0x00,0x0c,0x01,0x00,0x0d,0x01,0x00,0x0e,0x01,
-  0x00,0x0f,0x01,0x00,0x10,0x01,0x00,0x14,0x01,0x00,0x16,0x02,0x00,0x18,0x01,0x00,
-  0x19,0x01,0x00,0x1a,0x02,0x00,0x1c,0x01,0x00,0x1d,0x01,0x00,0x21,0x01,0x00,0x22,
-  0x01,0x00,0x23,0x02,0x00,0x2c,0x01,0x00,0x2d,0x02,0x00,0x2e,0x02,0x00,0x33,0x02,
-  0x00,0x37,0x02,0x00,0x3d,0x01,0x00,0x42,0x02,0x00,0x46,0x02,0x00,0x48,0x01,0x00,
-  0x4d,0x01,0x00,0x4e,0x01,0x00,0x52,0x01,0x00,0x58,0x02,0x00,0x7c,0x02,0x00,0x82,
-  0x01,0x00,0x87,0x01,0x00,0x89,0x01,0x00,0x8a,0x01,0x01,0xcd,0x02,0x10
-]);
-const CMD_STOP      = new Uint8Array([0xfc,0x05,0x13,0x00,0xed]);
+/* ══════════════════════════════════════════════════════════════════════
+   BLE ПІДКЛЮЧЕННЯ/ПЕРЕПІДКЛЮЧЕННЯ — єдина точка входу requestConnect()
+   ══════════════════════════════════════════════════════════════════════
+   РЕФАКТОРИНГ: раніше було 4 окремі місця з майже однаковим кодом
+   підключення (initialConnect/quickReconnect/foregroundReconnectNow/
+   onUnexpectedDisconnect-цикл) — звідси й race condition між ними. Тепер
+   УСІ спроби підключення (клік, visibilitychange, автоцикл, перший вибір
+   пристрою) йдуть через requestConnect(reason), захищений м'ютексом
+   isConnecting. Паралельний виклик або ігнорується, або (якщо це прямий
+   клік користувача) форсує "жорсткий" скид застряглої спроби. */
+let bDev=null,bChr=null,bConn=false,userDisconnected=false;
+let isConnecting=false;           // м'ютекс: лише ОДНА спроба підключення одночасно
+let currentConnectAbort=null;     // AbortController поточної спроби (для форс-скасування)
+let pauseTimestamp=null;          // коли додаток пішов у фон — для детекції "сну" iOS
+const SLEEP_THRESHOLD_MS=5000;    // довше цього у фоні → BLE-стек вважаємо гарантовано "зомбі"
+const CONNECT_TIMEOUT_MS=4000;
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 // Той самий sleep, але його можна "розбудити" достроково (kickReconnectNow) —
@@ -1139,16 +1710,60 @@ function kickReconnectNow(){
 
 // КРИТИЧНО: bDev.gatt.connect() інколи "зависає" назавжди — не резолвиться
 // і не падає з помилкою (типово, коли пристрій поза зоною досяжності саме
-// в момент виклику). Без таймауту весь цикл перепідключення застрягав на
-// цій одній спробі, і жодне "розбудження ззовні" вже не допомагало, бо
-// цикл не спав — він був застряглий усередині самого await. Обгортаємо
-// підключення в перегони з таймером.
-function withTimeout(promise, ms){
-  return Promise.race([
-    promise,
-    new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')), ms))
-  ]);
+// в момент виклику, або BLE-стек iOS у "зомбі"-стані після сну). Web
+// Bluetooth не підтримує справжнє скасування такого виклику на рівні ОС —
+// AbortSignal тут не зупиняє сам gatt.connect(), а лише дозволяє нам
+// ІГНОРУВАТИ його результат, якщо тим часом уже стартувала нова, свіжіша
+// спроба (signal.aborted). Тобто застрягла обіцянка може колись сама
+// резолвитись у фоні — але ми просто не діємо на її основі.
+function withAbortTimeout(promise, ms, signal){
+  return new Promise((resolve,reject)=>{
+    const t=setTimeout(()=>reject(new Error('timeout')), ms);
+    const onAbort=()=>{ clearTimeout(t); reject(new Error('aborted')); };
+    if(signal){ if(signal.aborted){ onAbort(); return; } signal.addEventListener('abort', onAbort, {once:true}); }
+    promise.then(
+      v=>{ clearTimeout(t); if(!signal||!signal.aborted) resolve(v); },
+      e=>{ clearTimeout(t); if(!signal||!signal.aborted) reject(e); }
+    );
+  });
 }
+
+// ── Примусове "жорстке" очищення стану ──
+// Викликається (а) при поверненні з довгого сну у фоні (детекція нижче) і
+// (б) коли юзер тисне Connect ПОКИ вже триває застрягла спроба (User Intent
+// Override) — в обох випадках старі GATT-посилання й прапорці вважаються
+// недійсними, незалежно від того, що там усередині насправді думає iOS.
+function forceHardResetState(){
+  isConnecting=false;
+  if(currentConnectAbort){ try{ currentConnectAbort.abort(); }catch(e){} currentConnectAbort=null; }
+  bConn=false;
+  if(_watchdogInt){ clearInterval(_watchdogInt); _watchdogInt=null; }
+  stopAlert();
+  cancelAutoTripStart();
+  if(bChr){ try{ bChr.removeEventListener('characteristicvaluechanged', onData); }catch(e){} }
+  bChr=null;
+  if(bDev && bDev.gatt && bDev.gatt.connected){ try{ bDev.gatt.disconnect(); }catch(e){} }
+  Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--')); ud();
+}
+
+const SVC='0000ffe0-0000-1000-8000-00805f9b34fb',CHR='0000ffe1-0000-1000-8000-00805f9b34fb';
+
+const CMD_ATSECU    = new Uint8Array([0x41,0x54,0x53,0x45,0x43,0x55,0x0d]);
+const CMD_PING      = new Uint8Array([0xfc,0x05,0x12,0x00,0xee]);
+const CMD_ZERO      = new Uint8Array([0x00,0x00,0x00]);
+const CMD_FIRMWARE  = new Uint8Array([0xfc,0x05,0x36,0x00,0xca]);
+const CMD_UNK50     = new Uint8Array([0xfc,0x05,0x50,0x00,0xb0]);
+const CMD_SUBSCRIBE = new Uint8Array([
+  0xfc,0x05,0x10,0x79,0x08,0x00,0x02,0x01,0x00,0x04,0x01,0x00,0x07,0x01,0x00,0x08,
+  0x01,0x00,0x09,0x01,0x00,0x0a,0x01,0x00,0x0c,0x01,0x00,0x0d,0x01,0x00,0x0e,0x01,
+  0x00,0x0f,0x01,0x00,0x10,0x01,0x00,0x14,0x01,0x00,0x16,0x02,0x00,0x18,0x01,0x00,
+  0x19,0x01,0x00,0x1a,0x02,0x00,0x1c,0x01,0x00,0x1d,0x01,0x00,0x21,0x01,0x00,0x22,
+  0x01,0x00,0x23,0x02,0x00,0x2c,0x01,0x00,0x2d,0x02,0x00,0x2e,0x02,0x00,0x33,0x02,
+  0x00,0x37,0x02,0x00,0x3d,0x01,0x00,0x42,0x02,0x00,0x46,0x02,0x00,0x48,0x01,0x00,
+  0x4d,0x01,0x00,0x4e,0x01,0x00,0x52,0x01,0x00,0x58,0x02,0x00,0x7c,0x02,0x00,0x82,
+  0x01,0x00,0x87,0x01,0x00,0x89,0x01,0x00,0x8a,0x01,0x01,0xcd,0x02,0x10
+]);
+const CMD_STOP      = new Uint8Array([0xfc,0x05,0x13,0x00,0xed]);
 
 const CHUNK = 20;
 async function sendCmd(cmd){
@@ -1254,7 +1869,7 @@ function armWatchdog(){
   _lastPacketTs=Date.now();
   if(_watchdogInt) clearInterval(_watchdogInt);
   _watchdogInt=setInterval(()=>{
-    if(userDisconnected || reconnecting) return;
+    if(userDisconnected || isConnecting) return;
     if(!bConn) {
       clearInterval(_watchdogInt);
       _watchdogInt = null;
@@ -1299,56 +1914,34 @@ async function requestWakeLock(){
     }
   }catch(e){}
 }
-// ── ПРЯМА СПРОБА ПЕРЕПІДКЛЮЧЕННЯ ПРИ ПОВЕРНЕННІ НА ПЕРЕДНІЙ ПЛАН ──
-// Раніше ця логіка намагалась "розбудити" фоновий цикл перепідключення
-// (kickReconnectNow), але якщо цикл був застряглий УСЕРЕДИНІ зависаючого
-// gatt.connect() (а не спав між спробами) — жодне розбудження не
-// допомагало. Тепер робимо як прямий тап по кнопці Connect: одразу й
-// безумовно пробуємо підключитись, з таймаутом 8с. Якщо не вийшло —
-// запускаємо звичайний фоновий цикл (з паузами) для подальших спроб.
-async function foregroundReconnectNow(){
-  if(userDisconnected || !bDev || bConn) return;
-  reconnecting = true;
-  const btn=document.getElementById('cb'), bs=document.getElementById('bs');
-  btn.textContent='⏳…'; btn.className='pill go';
-  bs.textContent='Перепідключення…'; bs.className='pill err';
-  try{
-    const srv = await withTimeout(bDev.gatt.connect(), 4000);
-    bChr = await(await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
-    bChr.addEventListener('characteristicvaluechanged', onData);
-    await bChr.startNotifications();
-    bConn=true; btn.textContent='🟢 '+(bDev.name||'OK'); btn.className='pill ok';
-    bs.textContent=bDev.name||'Connected'; bs.className='pill on';
-    Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--')); ud();
-    requestWakeLock();
-    await initSession();
-    armDataSettleGuard(10000);
-    scheduleAutoTripStart(10000);
-    armWatchdog();
-    reconnecting=false;
-  }catch(e){
-    reconnecting=false;
-    onUnexpectedDisconnect(); // не вийшло миттєво — далі звичайний фоновий цикл з паузами
+/* ── ПРЯМА СПРОБА ПЕРЕПІДКЛЮЧЕННЯ ПРИ ПОВЕРНЕННІ НА ПЕРЕДНІЙ ПЛАН ──
+   ДЕТЕКЦІЯ СНУ iOS: якщо додаток пробув у фоні понад SLEEP_THRESHOLD_MS —
+   BLE-стек вважаємо гарантовано "зомбі" (gatt.connect()/getPrimaryService()
+   могли зависнути без помилки й без проміса) і робимо forceHardResetState()
+   ПЕРЕД новою спробою, а не сподіваємось, що стара якось сама розрулиться. */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden'){
+    pauseTimestamp=Date.now();
+    return;
   }
-}
-
-document.addEventListener('visibilitychange', async ()=>{
-  if(_wakeLock===null && document.visibilityState==='visible' && bConn){
-    requestWakeLock();
-  }
+  // visible:
+  if(_wakeLock===null && bConn) requestWakeLock();
   // Аудіо-контекст теж може "заснути" разом з рештою сторінки у фоні —
   // відновлюємо його одразу, як тільки додаток знову видимий.
-  if(document.visibilityState==='visible' && audioCtx && audioCtx.state==='suspended'){
-    try{ audioCtx.resume(); }catch(e){}
-  }
-  if(document.visibilityState==='visible' && !userDisconnected && bDev && !bConn){
-    foregroundReconnectNow();
-  } else if(document.visibilityState==='visible' && bConn){
+  if(audioCtx && audioCtx.state==='suspended'){ try{ audioCtx.resume(); }catch(e){} }
+  const hiddenForMs = pauseTimestamp ? (Date.now()-pauseTimestamp) : 0;
+  pauseTimestamp=null;
+  if(!userDisconnected && bDev && !bConn){
+    if(hiddenForMs>SLEEP_THRESHOLD_MS){
+      console.warn('[ble] застосунок був у фоні '+Math.round(hiddenForMs/1000)+'с — forceHardResetState() перед перепідключенням (BLE-стек iOS вважаємо зомбі)');
+      forceHardResetState();
+    }
+    requestConnect('foreground');
+  } else if(bConn){
     // З'єднання формально НЕ розривалось (bConn лишався true), поки додаток
     // був у фоні — але iOS міг тримати/затримувати BLE-нотифікації весь цей
     // час, і перший пакет, що прилетить одразу після повернення, теж буває
-    // "сирим" (те саме залипання TPS=100%, про яке писав користувач), навіть
-    // без формального disconnect/reconnect. Тому ставимо ту саму 10с-гвардію.
+    // "сирим" (те саме залипання TPS=100%). Тому ставимо ту саму 10с-гвардію.
     armDataSettleGuard(10000);
   }
 });
@@ -1361,184 +1954,178 @@ document.addEventListener('visibilitychange', async ()=>{
 function requestFullscreenSafe(){ /* навмисно нічого не робить */ }
 function exitFullscreenSafe(){ /* навмисно нічого не робить */ }
 
-  const btn=document.getElementById('cb');
+const btn=document.getElementById('cb');
 
-  // ── ПОВНЕ ВІДКЛЮЧЕННЯ (довге натискання) ──
-  async function fullDisconnect(){
-    userDisconnected=true; // зупиняє будь-який активний цикл перепідключення
-    kickReconnectNow(); // якщо цикл спить в очікуванні — будимо його одразу, щоб він побачив userDisconnected і вийшов
-    cancelAutoTripStart();
-    if(_watchdogInt) { clearInterval(_watchdogInt); _watchdogInt = null; }
-    if(typeof stopPipWorkerTimer === 'function') stopPipWorkerTimer(); // не лишати вічний фоновий таймер після явного відключення
-    try{await sendCmd(CMD_STOP);}catch(e){}
-    try{bDev&&bDev.gatt.disconnect();}catch(e){}
-    bConn=false;reconnecting=false;
-    btn.textContent='🔵 Connect';btn.className='pill';
-    document.getElementById('bs').textContent='bLink3';
-    document.getElementById('bs').className='pill';stopAlert();
-    Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--'));ud();
-    exitFullscreenSafe();
-  }
-
-  // ── ПЕРВІСНЕ ПІДКЛЮЧЕННЯ (немає ще жодного відомого пристрою) ──
-  async function initialConnect(){
-    userDisconnected=false;
-    btn.textContent='⏳…';btn.className='pill go';
-    // Запит дозволу на гіроскоп/акселерометр — САМЕ ТУТ, на самому початку
-    // тап-обробника Connect, поки жест користувача ще "свіжий" (iOS дозволяє
-    // requestPermission() лише в межах прямого user-gesture). Раніше для
-    // цього треба було окремо тапати тайл нахилу щосесії — тепер один тап
-    // на Connect одразу активує і BLE, і гіроскоп.
-    try{ await requestMotionPermission(); }catch(e){}
-    try{
-      bDev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'bLink'}],optionalServices:[SVC]});
-      bDev.addEventListener('gattserverdisconnected',onUnexpectedDisconnect);
-      const srv=await withTimeout(bDev.gatt.connect(), 4000);
-      bChr=await(await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
-      bChr.addEventListener('characteristicvaluechanged',onData);
-      await bChr.startNotifications();
-      bConn=true;btn.textContent='🟢 '+(bDev.name||'OK');btn.className='pill ok';
-      document.getElementById('bs').textContent=bDev.name||'Connected';
-      document.getElementById('bs').className='pill on';
-      Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--'));ud();
-      requestFullscreenSafe();
-      requestWakeLock();
-      await initSession();
-    armDataSettleGuard();
-    scheduleAutoTripStart();
-      armWatchdog();
-      tripStart(); // авто-старт запису поїздки саме при першому конекті (вибір пристрою), не при тихих реконнектах
-    }catch(e){
-      bConn=false;btn.textContent='🔵 Connect';btn.className='pill';
-      document.getElementById('bs').textContent='Error';
-      document.getElementById('bs').className='pill err';
+// ══════════════════════════════════════════════════════════════════════
+// requestConnect(reason) — ЄДИНА точка входу для БУДЬ-ЯКОЇ спроби
+// підключення: 'initial' (перший вибір пристрою), 'user-click' (тап по
+// кнопці), 'foreground' (повернення з фону), 'background-retry' (фоновий
+// цикл ретраїв). Захищено м'ютексом isConnecting.
+// ══════════════════════════════════════════════════════════════════════
+async function requestConnect(reason){
+  const bs=document.getElementById('bs');
+  if(isConnecting){
+    if(reason==='user-click'){
+      // USER INTENT OVERRIDE: явний тап користувача важливіший за застряглу
+      // фонову спробу — скасовуємо її (наскільки це взагалі можливо для
+      // Web Bluetooth, див. коментар біля withAbortTimeout) і стартуємо
+      // чисто з нуля.
+      console.warn('[ble] requestConnect(user-click) під час isConnecting — forceHardResetState() і новий чистий конект');
+      forceHardResetState();
+    } else {
+      console.log('[ble] requestConnect('+reason+') проігноровано — вже триває інша спроба');
+      return;
     }
   }
+  if(userDisconnected && reason==='background-retry') return; // явне відключення користувачем має пріоритет
 
-  // ── ШВИДКИЙ ТАП: "просто перепідключення" ──
-  // ГОЛОВНИЙ ФІКС: раніше швидкий тап під час автоперепідключення викликав
-  // requestDevice() ЗНОВУ (новий пікер OS), а старий цикл перепідключення при
-  // цьому й далі працював у фоні — два паралельні процеси на той самий
-  // пристрій, звідси нестабільність. Тепер: якщо bDev вже відомий з цієї
-  // сесії — НІКОЛИ не викликаємо requestDevice() повторно, а або форсуємо
-  // "kick" активного циклу перепідключення (миттєвий ретрай замість очікування
-  // паузи), або, якщо зараз під'єднано — робимо швидкий розрив+перепідключення
-  // через той самий цикл (замість повного ручного розриву).
-  async function quickReconnect(){
+  userDisconnected=false;
+  isConnecting=true;
+  const myAbort=new AbortController();
+  currentConnectAbort=myAbort;
+  btn.textContent='⏳…'; btn.className='pill go';
+  bs.textContent='Перепідключення…'; bs.className='pill err';
+
+  try{
     if(!bDev){
-      // Немає ще жодного відомого пристрою цієї сесії — це первісне підключення.
-      await initialConnect();
+      // Запит дозволу на гіроскоп/акселерометр — САМЕ ТУТ, на самому початку
+      // тап-обробника Connect, поки жест користувача ще "свіжий" (iOS дозволяє
+      // requestPermission() лише в межах прямого user-gesture).
+      try{ await requestMotionPermission(); }catch(e){}
+      bDev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'bLink'}],optionalServices:[SVC]});
+      bDev.addEventListener('gattserverdisconnected', onUnexpectedDisconnect);
+    }
+    const srv=await withAbortTimeout(bDev.gatt.connect(), CONNECT_TIMEOUT_MS, myAbort.signal);
+    if(myAbort.signal.aborted) throw new Error('aborted');
+    bChr=await(await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
+    bChr.addEventListener('characteristicvaluechanged', onData);
+    await bChr.startNotifications();
+    if(myAbort.signal.aborted) throw new Error('aborted');
+
+    bConn=true; btn.textContent='🟢 '+(bDev.name||'OK'); btn.className='pill ok';
+    bs.textContent=bDev.name||'Connected'; bs.className='pill on';
+    Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--')); ud();
+    requestFullscreenSafe();
+    requestWakeLock();
+    await initSession();
+    if(reason==='initial'){
+      armDataSettleGuard();
+      scheduleAutoTripStart();
+      tripStart(); // авто-старт запису поїздки саме при першому конекті (вибір пристрою), не при тихих реконнектах
+    } else {
+      armDataSettleGuard(10000);
+      scheduleAutoTripStart(10000);
+    }
+    armWatchdog();
+    isConnecting=false;
+    currentConnectAbort=null;
+  }catch(e){
+    isConnecting=false;
+    currentConnectAbort=null;
+    if(e && e.name==='NotFoundError'){
+      // Юзер сам скасував системний пікер вибору пристрою — не запускаємо
+      // цикл ретраїв, це не збій зв'язку, а свідома відмова.
+      btn.textContent='🔵 Connect'; btn.className='pill';
+      bs.textContent='bLink3'; bs.className='pill';
       return;
     }
-    userDisconnected=false;
-    if(reconnecting){
-      // Цикл перепідключення вже йде (спить між спробами) — будимо його одразу.
-      kickReconnectNow();
-      return;
-    }
-    if(bConn){
-      // Підключено, але користувач хоче "перепідключити" (наприклад, дані
-      // виглядають застряглими) — розриваємо, onUnexpectedDisconnect сам
-      // підхопить і одразу почне перепідключення (перша спроба — швидка).
-      try{ bDev.gatt.disconnect(); }catch(e){}
-      return;
-    }
-    // Не підключено, не в процесі — користувач раніше зробив довге натискання
-    // (повне відключення). Пробуємо перепідключитись до вже відомого
-    // пристрою НАПРЯМУ, без нового пікера.
-    btn.textContent='⏳…';btn.className='pill go';
-    try{
-      const srv=await withTimeout(bDev.gatt.connect(), 4000);
-      bChr=await(await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
-      bChr.addEventListener('characteristicvaluechanged',onData);
-      await bChr.startNotifications();
-      bConn=true;btn.textContent='🟢 '+(bDev.name||'OK');btn.className='pill ok';
-      document.getElementById('bs').textContent=bDev.name||'Connected';
-      document.getElementById('bs').className='pill on';
-      Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--'));ud();
-      requestFullscreenSafe();
-      requestWakeLock();
-      await initSession();
-    armDataSettleGuard(10000);
-    scheduleAutoTripStart(10000);
-      armWatchdog();
-    }catch(e){
-      bConn=false;btn.textContent='🔵 Connect';btn.className='pill';
-      document.getElementById('bs').textContent='Error';
-      document.getElementById('bs').className='pill err';
+    console.warn('[ble] requestConnect('+reason+') не вдалась:', e && e.message);
+    if(bDev && !userDisconnected && reason!=='background-retry'){
+      scheduleBackgroundRetryLoop(); // фоновий цикл з паузами підхопить подальші спроби
+    } else if(reason!=='background-retry'){
+      btn.textContent='🔵 Connect'; btn.className='pill';
+      bs.textContent='Error'; bs.className='pill err';
     }
   }
+}
 
-  // ── РОЗПІЗНАВАННЯ ЖЕСТУ: швидкий тап vs довге натискання ──
-  const LONG_PRESS_MS=550;
-  let pressTimer=null, longFired=false;
-  btn.addEventListener('pointerdown',()=>{
-    unlockAudioOnGesture(); // саме тут гарантовано є user-gesture (iOS вимагає це)
-    longFired=false;
-    pressTimer=setTimeout(()=>{
-      longFired=true;
-      if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
-      fullDisconnect();
-    },LONG_PRESS_MS);
-  });
-  const cancelPress=()=>{ if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} };
-  btn.addEventListener('pointerup',()=>{
-    cancelPress();
-    if(!longFired) quickReconnect();
-  });
-  btn.addEventListener('pointerleave',cancelPress);
-  btn.addEventListener('pointercancel',cancelPress);
+// ── Фоновий цикл ретраїв (з паузами) — старт лише через onUnexpectedDisconnect
+// або невдалу requestConnect(); сам цикл лише планує повторні виклики
+// requestConnect('background-retry'), жодної власної копії connect-логіки. ──
+let _bgRetryRunning=false;
+async function scheduleBackgroundRetryLoop(){
+  if(_bgRetryRunning) return; // не плодимо паралельні цикли
+  _bgRetryRunning=true;
+  const bs=document.getElementById('bs');
+  let attempt=0;
+  while(!userDisconnected && !bConn){
+    attempt++;
+    // Перші 10 спроб — швидко (кожні 1.5с), далі — рідше (кожні 5с), щоб не
+    // спамити спроби годинами і берегти батарею, якщо сигнал пропав надовго.
+    // Цикл НЕ здається — триває, поки користувач сам не натисне Disconnect.
+    const delay=attempt<=10?1500:5000;
+    await interruptibleSleep(delay);
+    if(userDisconnected||bConn) break;
+    if(!isConnecting) await requestConnect('background-retry');
+    if(!bConn && !userDisconnected && bs) bs.textContent='Перепідключення… (#'+attempt+')';
+  }
+  _bgRetryRunning=false;
+}
+
+// ── ПОВНЕ ВІДКЛЮЧЕННЯ (довге натискання) ──
+async function fullDisconnect(){
+  userDisconnected=true; // зупиняє будь-який активний цикл перепідключення
+  kickReconnectNow(); // якщо цикл спить в очікуванні — будимо його одразу, щоб він побачив userDisconnected і вийшов
+  if(typeof stopPipWorkerTimer==='function') stopPipWorkerTimer(); // не лишати вічний фоновий таймер після явного відключення
+  try{ await sendCmd(CMD_STOP); }catch(e){}
+  forceHardResetState();
+  btn.textContent='🔵 Connect'; btn.className='pill';
+  document.getElementById('bs').textContent='bLink3';
+  document.getElementById('bs').className='pill';
+  exitFullscreenSafe();
+}
+
+// ── ОБРОБНИК КЛІКУ "Connect" ──
+async function onConnectButtonClick(){
+  if(bConn){
+    // Підключено, але користувач хоче форснути перепідключення (наприклад,
+    // дані виглядають застряглими) — розриваємо, подія gattserverdisconnected
+    // сама підхопить і почне scheduleBackgroundRetryLoop() (перша спроба швидка).
+    try{ bDev.gatt.disconnect(); }catch(e){}
+    return;
+  }
+  // Немає з'єднання (можливо, зараз саме триває isConnecting) — requestConnect
+  // сам вирішить: форсує reset і чистий конект (якщо є застрягла спроба),
+  // або просто підключиться (до нового пристрою, якщо bDev ще нема, чи до
+  // вже відомого напряму, без нового системного пікера).
+  await requestConnect(bDev ? 'user-click' : 'initial');
+}
+
+// ── РОЗПІЗНАВАННЯ ЖЕСТУ: швидкий тап vs довге натискання ──
+const LONG_PRESS_MS=550;
+let pressTimer=null, longFired=false;
+btn.addEventListener('pointerdown',()=>{
+  unlockAudioOnGesture(); // саме тут гарантовано є user-gesture (iOS вимагає це)
+  longFired=false;
+  pressTimer=setTimeout(()=>{
+    longFired=true;
+    if(navigator.vibrate) try{navigator.vibrate(30);}catch(e){}
+    fullDisconnect();
+  },LONG_PRESS_MS);
+});
+const cancelPress=()=>{ if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} };
+btn.addEventListener('pointerup',()=>{
+  cancelPress();
+  if(!longFired) onConnectButtonClick();
+});
+btn.addEventListener('pointerleave',cancelPress);
+btn.addEventListener('pointercancel',cancelPress);
 }
 setupBleUI(); // одноразове налаштування при завантаженні (НЕ на кожен клік —
 // раніше через це на кожен клік Connect/Disconnect ще й додавався ЗАЙВИЙ
 // дублікат слухача 'visibilitychange', який назавжди лишався висіти)
 
-async function onUnexpectedDisconnect(){
-  bConn=false;stopAlert();
+// ── Подія "GATT сам розірвався" (втрата сигналу, вимкнений скутер тощо) ──
+// Лише прибирає стан і, якщо це не було свідоме відключення користувачем,
+// підхоплює фоновий цикл ретраїв. Жодної власної копії connect-логіки.
+function onUnexpectedDisconnect(){
+  bConn=false; stopAlert();
   cancelAutoTripStart();
-  if(_watchdogInt) { clearInterval(_watchdogInt); _watchdogInt = null; }
-  Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--'));ud();
+  if(_watchdogInt){ clearInterval(_watchdogInt); _watchdogInt=null; }
+  Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--')); ud();
   exitFullscreenSafe();
-  const btn=document.getElementById('cb'),bs=document.getElementById('bs');
-  if(userDisconnected||reconnecting)return;
-  reconnecting=true;
-  bs.textContent='Перепідключення…';bs.className='pill err';
-  btn.textContent='⏳…';btn.className='pill go';
-  let attempt=0;
-  while(!userDisconnected){
-    attempt++;
-    // Перші 10 спроб — швидко (кожні 1.5с), далі — рідше (кожні 5с), щоб не
-    // спамити спроби годинами і берегти батарею, якщо сигнал пропав надовго
-    // (двигун заглушений, відійшов від мотоцикла тощо). АЛЕ цикл більше НЕ
-    // здається — раніше він зупинявся після 10 спроб (~15с) і дашборд
-    // назавжди зависав на "Перепідключення…", навіть якщо сигнал повертався
-    // пізніше. Тепер спроби тривають, поки користувач сам не натисне Disconnect.
-    const delay = attempt<=10 ? 1500 : 5000;
-    await interruptibleSleep(delay);
-    if(userDisconnected) break;
-    try{
-      const srv=await withTimeout(bDev.gatt.connect(), 4000);
-      bChr=await(await srv.getPrimaryService(SVC)).getCharacteristic(CHR);
-      bChr.addEventListener('characteristicvaluechanged',onData);
-      await bChr.startNotifications();
-      bConn=true;btn.textContent='🟢 '+(bDev.name||'OK');btn.className='pill ok';
-      bs.textContent=bDev.name||'Connected';bs.className='pill on';
-      Object.keys(V).forEach(k=>V[k]=(k==='RPM'?0:'--'));ud();
-      requestFullscreenSafe();
-      requestWakeLock();
-      await initSession();
-    armDataSettleGuard(10000);
-    scheduleAutoTripStart(10000);
-      armWatchdog();
-      reconnecting=false;
-      return;
-    }catch(e){
-      // Оновлюємо лічильник спроб на екрані — щоб було видно, що процес живий,
-      // а не завис (раніше текст просто застигав на "Перепідключення…" назавжди).
-      bs.textContent='Перепідключення… (#'+attempt+')';
-    }
-  }
-  reconnecting=false;
+  if(userDisconnected) return;
+  scheduleBackgroundRetryLoop();
 }
 
 function dl(){return[
@@ -1620,11 +2207,18 @@ function mkTile(tile){
   rm.addEventListener('click',(e)=>{
     e.stopPropagation();
     if(dragTile && dragTile.id===tile.id){ dragTile=null; dragEl=null; } // вибрану плитку якраз видаляють — не лишаємо застарілу посилання
+    if(tile.k==='MapTile' && mapInstances[tile.id]){
+      try{ mapInstances[tile.id].map.remove(); }catch(err){}
+      delete mapInstances[tile.id];
+    }
     lay=lay.filter(t=>t.id!==tile.id);saveLay();render();
   });
   el.appendChild(rm);
 
-  if(tile.st==='gauge' && tile.sz==='s22'){
+  if(tile.k==='MapTile'){
+    el.classList.add('map-tile');
+    el.appendChild(mkMapTile(tile));
+  }else if(tile.st==='gauge' && tile.sz==='s22'){
     el.appendChild(mkG(tile,p));
   }else{
     el.appendChild(mkF(tile,p));
@@ -1713,6 +2307,892 @@ function ud(){
   });
   lay.forEach(t=>{if(t.st==='gauge'&&t.sz==='s22')ug(t.id,t.k);});
   prevV={...V};
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ПЛИТКА "КАРТА" (2×2, Leaflet) — гібридний офлайн/онлайн режим
+   ══════════════════════════════════════════════════════════════════════
+   ВАЖЛИВО: живі координати беремо з _lastLat/_lastLon (розділ вище,
+   watchPosition) — а НЕ з V.GPS. У цьому дашборді V.GPS історично означає
+   ШВИДКІСТЬ (км/год) з GPS, а не координати (див. об'єкт P.GPS: u:'km/h').
+   Технічне завдання просило "V.GPS" для координат, але такого поля з
+   координатами в проєкті немає — це просто неточність у формулюванні,
+   а не окрема вимога, тож використано реальне джерело координат. */
+
+// ── IndexedDB: тут лежать ВЕЛИКІ файли (.mbtiles, GPX/GeoJSON маршрут),
+// щоб не впертись у ліміт localStorage (~5МБ) і не тягнути їх заново після
+// кожного перезапуску застосунку. ──
+const MAPDB_NAME='vracer-map', MAPDB_STORE='files', MAPDB_TILES='tiles';
+function mapIdb(){
+  return new Promise((resolve,reject)=>{
+    // v2: додано окремий стор "tiles" — сюди тихо складаються тайли, які
+    // карта тягнула онлайн (розділ "Накопичення тайлів" нижче). Стара
+    // v1-база (лише "files") при апгрейді не втрачається — IndexedDB сам
+    // зберігає вже наявні стори, ми лише додаємо новий.
+    const req=indexedDB.open(MAPDB_NAME,2);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(MAPDB_STORE)) db.createObjectStore(MAPDB_STORE);
+      if(!db.objectStoreNames.contains(MAPDB_TILES)) db.createObjectStore(MAPDB_TILES);
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function idbSet(key,val){
+  try{
+    const db=await mapIdb();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(MAPDB_STORE,'readwrite');
+      tx.objectStore(MAPDB_STORE).put(val,key);
+      tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);
+    });
+  }catch(e){ return false; }
+}
+async function idbGet(key){
+  try{
+    const db=await mapIdb();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(MAPDB_STORE,'readonly');
+      const r=tx.objectStore(MAPDB_STORE).get(key);
+      r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error);
+    });
+  }catch(e){ return null; }
+}
+async function idbDel(key){
+  try{
+    const db=await mapIdb();
+    return new Promise((res)=>{
+      const tx=db.transaction(MAPDB_STORE,'readwrite');
+      tx.objectStore(MAPDB_STORE).delete(key);
+      tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);
+    });
+  }catch(e){ return false; }
+}
+
+// ── Накопичення тайлів "з кешу" (розділ, який просив користувач) ──
+// Справжній HTTP-кеш браузера з JS не читається, тому робимо власний:
+// щоразу, коли карта тягне тайл онлайн (бо в .mbtiles його нема), паралельно
+// зберігаємо його байти сюди, в окремий IndexedDB-стор, під ключем "z_x_y".
+// Кнопка "Конвертувати в офлайн-карту" пізніше збирає все накопичене в
+// справжню MBTiles (SQLite) базу і домержує в уже завантажений офлайн-файл.
+function tileCacheKey(z,x,y){ return z+'_'+x+'_'+y; }
+async function cacheTileBytes(z,x,y,arrayBuffer){
+  try{
+    const db=await mapIdb();
+    return new Promise((res)=>{
+      const tx=db.transaction(MAPDB_TILES,'readwrite');
+      tx.objectStore(MAPDB_TILES).put(arrayBuffer, tileCacheKey(z,x,y));
+      tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);
+    });
+  }catch(e){ return false; }
+}
+async function idbCountTiles(){
+  try{
+    const db=await mapIdb();
+    return new Promise((res)=>{
+      const tx=db.transaction(MAPDB_TILES,'readonly');
+      const r=tx.objectStore(MAPDB_TILES).count();
+      r.onsuccess=()=>res(r.result||0);r.onerror=()=>res(0);
+    });
+  }catch(e){ return 0; }
+}
+async function idbGetAllTiles(){
+  // Повертає масив {z,x,y,bytes} — для конвертора в MBTiles нижче.
+  try{
+    const db=await mapIdb();
+    return new Promise((res)=>{
+      const tx=db.transaction(MAPDB_TILES,'readonly');
+      const store=tx.objectStore(MAPDB_TILES);
+      const out=[];
+      const cursorReq=store.openCursor();
+      cursorReq.onsuccess=(e)=>{
+        const cur=e.target.result;
+        if(cur){
+          const [z,x,y]=cur.key.split('_').map(Number);
+          out.push({z,x,y,bytes:cur.value});
+          cur.continue();
+        } else { res(out); }
+      };
+      cursorReq.onerror=()=>res(out);
+    });
+  }catch(e){ return []; }
+}
+async function idbClearTiles(){
+  try{
+    const db=await mapIdb();
+    return new Promise((res)=>{
+      const tx=db.transaction(MAPDB_TILES,'readwrite');
+      tx.objectStore(MAPDB_TILES).clear();
+      tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);
+    });
+  }catch(e){ return false; }
+}
+
+
+// ── Налаштування карти (зум-рівні) — маленькі, тому в localStorage ──
+const MAP_DA={std:15, detail:18, dark:true, routeVisible:true, cacheZoomMin:17, cacheZoomMax:19};
+let MapCfg = {...MAP_DA, ...(lg('mapcfg')||{})};
+
+// ── MBTiles (SQLite) читання через sql.js ──
+let mbSqlDb=null;       // екземпляр SQL.Database поточного завантаженого .mbtiles
+let mbFileName=null;    // ім'я файлу — лише для відображення в налаштуваннях
+let _sqlJsReady=null;
+const SQLJS_CDN='https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/';
+// ВАЖЛИВО: sql.js складається з JS + окремого .wasm-файлу (~600КБ+), і без
+// цього кешування .wasm тягнувся б із CDN ЩОРАЗУ при відкритті застосунку —
+// а це означає, що читання ВЖЕ ЗАВАНТАЖЕНОЇ офлайн-карти залежало б від
+// інтернету саме в момент старту сторінки. Тобто офлайн-режим ламався б
+// рівно тоді, коли він найпотрібніший (немає зв'язку). Тому: перший раз
+// тягнемо з CDN і одразу ховаємо байти в IndexedDB, а всі наступні рази —
+// піднімаємо звідти, без жодного мережевого запиту.
+function ensureSqlJs(){
+  if(_sqlJsReady) return _sqlJsReady;
+  _sqlJsReady = (async ()=>{
+    let wasmBlobUrl=null;
+    try{
+      const rec=await idbGet('sqlWasmCache');
+      if(rec && rec.bytes) wasmBlobUrl=URL.createObjectURL(new Blob([rec.bytes],{type:'application/wasm'}));
+    }catch(e){}
+    const SQL = await initSqlJs({
+      locateFile:f=> (f.endsWith('.wasm') && wasmBlobUrl) ? wasmBlobUrl : (SQLJS_CDN+f)
+    });
+    if(!wasmBlobUrl){
+      // Перший успішний запуск (чи кеш ще порожній) — стягнули з CDN,
+      // збережемо байти на майбутнє окремим запитом у фоні (не затримує
+      // те, що вже й так завантажилось і працює зараз).
+      fetch(SQLJS_CDN+'sql-wasm.wasm').then(r=>r.arrayBuffer()).then(buf=>idbSet('sqlWasmCache',{bytes:buf})).catch(()=>{});
+    }
+    return SQL;
+  })();
+  // Якщо ця спроба провалилась (тимчасовий збій мережі) — не лишаємо
+  // застосунок навіки "зіпсованим": скидаємо, щоб наступний виклик
+  // (наприклад, наступне відкриття застосунку) міг спробувати знову.
+  _sqlJsReady.catch(()=>{ _sqlJsReady=null; });
+  return _sqlJsReady;
+}
+async function loadMbtilesFromBytes(bytes,name){
+  const SQL=await ensureSqlJs();
+  mbSqlDb=new SQL.Database(new Uint8Array(bytes));
+  mbFileName=name||'офлайн-карта.mbtiles';
+}
+async function loadSavedMbtilesIfAny(attempt){
+  attempt = attempt||1;
+  try{
+    const rec=await idbGet('mbtilesFile');
+    if(!rec || !rec.bytes){ console.log('[mbtiles] автовідновлення: у IndexedDB нічого не збережено (це нормально, якщо .mbtiles ще ніколи не завантажували)'); return; }
+    console.log('[mbtiles] автовідновлення: знайдено збережений файл "'+rec.name+'", розмір '+(rec.bytes.byteLength||rec.bytes.length||'?')+' байт — читаю через sql.js…');
+    await loadMbtilesFromBytes(rec.bytes, rec.name);
+    console.log('[mbtiles] автовідновлення: успішно, mbSqlDb готовий, файл = '+mbFileName);
+    // Плитка карти на дашборді могла вже намалюватись РАНІШЕ, ніж це
+    // відновлення встигло завершитись (воно асинхронне, а render() при
+    // старті — майже миттєвий) — без цього виклику вона так і лишилась би
+    // з дефолтним "ONLINE" назавжди для цієї сесії, хоча офлайн-файл уже є.
+    refreshMapBadges();
+    Object.values(mapInstances).forEach(st=>st.map.eachLayer(l=>{ if(HybridTileLayer && l instanceof HybridTileLayer) l.redraw(); }));
+  }catch(e){
+    console.error('[mbtiles] автовідновлення провалилось (спроба '+attempt+'):', e);
+    if(attempt<2){
+      // Одна повторна спроба через паузу — раптом це був разовий мережевий
+      // збіг (наприклад, .wasm саме в цю мить не встиг підвантажитись
+      // з CDN, поки локальний кеш ще порожній).
+      setTimeout(()=>loadSavedMbtilesIfAny(attempt+1).then(refreshMapSettingsIfOpen), 2500);
+    }
+  }
+}
+// MBTiles зберігає рядки тайлів у схемі TMS (вісь Y перевернута відносно
+// звичної XYZ, якою користується Leaflet/OSM) — переводимо y→tms_y.
+function mbGetTileBytes(z,x,y){
+  if(!mbSqlDb) return null;
+  const tmsY = Math.pow(2,z)-1-y;
+  try{
+    const res=mbSqlDb.exec('SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?',[z,x,tmsY]);
+    if(res.length && res[0].values.length) return res[0].values[0][0]; // Uint8Array
+  }catch(e){}
+  return null;
+}
+
+// ── Конвертор: накопичені онлайн-тайли (idbGetAllTiles) → справжня MBTiles
+// (SQLite) база. Якщо офлайн-карта вже завантажена — домержовує ПРЯМО в неї
+// (INSERT OR REPLACE, тобто новіші/додаткові тайли не стирають те, що вже
+// було); якщо нема жодної — створює нову базу з нуля. ──
+async function convertCachedTilesToMbtiles(onProgress){
+  const SQL=await ensureSqlJs();
+  const tiles=await idbGetAllTiles();
+  if(!tiles.length) return {ok:false, reason:'empty'};
+
+  let db = mbSqlDb; // домержовуємо в уже завантажену офлайн-карту, якщо вона є
+  if(!db){
+    db=new SQL.Database();
+    db.run(`CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB);
+            CREATE UNIQUE INDEX IF NOT EXISTS tile_index ON tiles (zoom_level, tile_column, tile_row);
+            CREATE TABLE IF NOT EXISTS metadata (name TEXT, value TEXT);`);
+    db.run(`INSERT INTO metadata (name,value) VALUES ('name','vRacer накопичена карта'), ('format','png')`);
+  } else {
+    // На випадок, якщо завантажений раніше .mbtiles чомусь без цих таблиць/індексу.
+    db.run(`CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB);
+            CREATE UNIQUE INDEX IF NOT EXISTS tile_index ON tiles (zoom_level, tile_column, tile_row);`);
+  }
+
+  const stmt=db.prepare('INSERT OR REPLACE INTO tiles (zoom_level,tile_column,tile_row,tile_data) VALUES (?,?,?,?)');
+  let i=0;
+  for(const t of tiles){
+    const tmsY = Math.pow(2,t.z)-1-t.y; // назад у TMS-рядок, той самий формат, що ми читаємо
+    stmt.run([t.z, t.x, tmsY, new Uint8Array(t.bytes)]);
+    i++;
+    if(onProgress && i%200===0) onProgress(i, tiles.length);
+  }
+  stmt.free();
+
+  const bytes = db.export(); // Uint8Array усього SQLite-файлу — те саме, що читається як завантажений .mbtiles
+  mbSqlDb = db;
+  mbFileName = mbFileName || 'накопичена-офлайн-карта.mbtiles';
+  await idbSet('mbtilesFile', {bytes: bytes.buffer, name: mbFileName});
+  return {ok:true, tilesCount:tiles.length};
+}
+
+// ── Гібридний тайл-шар: спершу mbtiles (офлайн), інакше — OSM (онлайн) ──
+// КРИТИЧНО: якщо Leaflet із CDN не завантажився (немає інтернету саме в
+// момент старту сторінки, CDN заблоковано мережею/Bluefy тощо), глобальний
+// `L` буде undefined — і виклик L.GridLayer.extend() кидав НЕОБРОБЛЕНИЙ
+// виняток прямо на верхньому рівні скрипта. Один необроблений виняток
+// зупиняє ВЕСЬ подальший код у тому самому <script> — саме тому вивалювався
+// повністю чорний екран із "мертвим" топбаром (кнопки намальовані статичним
+// HTML і показувались, а от render() сітки плиток нижче по коду просто
+// ніколи не викликався). Тепер це загорнуто: якщо L відсутній — просто не
+// створюємо клас (плитка карти потім сама покаже повідомлення про це,
+// див. initLeafletMap), а решта дашборду (BLE, тайли, налаштування)
+// продовжує працювати як звичайно.
+let HybridTileLayer = null;
+try{
+  if(typeof L !== 'undefined' && L.GridLayer){
+    HybridTileLayer = L.GridLayer.extend({
+      createTile: function(coords, done){
+        const tile = document.createElement('img');
+        tile.setAttribute('role','presentation');
+        tile.style.width = tile.style.height = '256px';
+        const z = coords.z, x = coords.x;
+        // Тайли з негативним/переповненим x на межі карти світу — Leaflet сам
+        // нормалізує їх під капотом для XYZ-запиту, тут просто підстрахуємось.
+        const y = coords.y;
+        const bytes = mbGetTileBytes(z,x,y);
+        if(bytes){
+          const blob=new Blob([bytes.buffer?bytes:new Uint8Array(bytes)],{type:'image/png'});
+          const url=URL.createObjectURL(blob);
+          tile.onload=()=>{URL.revokeObjectURL(url);done(null,tile);if(this.options.onTileSource)this.options.onTileSource('offline');};
+          tile.onerror=()=>{URL.revokeObjectURL(url);done(new Error('bad tile'),tile);};
+          tile.src=url;
+          tile.dataset.src='offline';
+        } else {
+          // Немає офлайн-тайла (файл не завантажено АБО виїхали за межі
+          // завантаженого регіону) — тягнемо "на льоту" з інтернету. Робимо
+          // це через fetch() (а не просто tile.src=url), бо для накопичення
+          // офлайн-бази (нижче) нам потрібні саме БАЙТИ тайла, а не просто
+          // картинка в <img> — так ми і показуємо тайл, і одразу тихо
+          // складаємо його байти в IndexedDB для майбутньої конвертації.
+          const sub=['a','b','c'][(x+y)%3];
+          const url=`https://${sub}.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+          tile.dataset.src='online';
+          fetch(url).then(r=>{
+            if(!r.ok) throw new Error('http '+r.status);
+            return r.arrayBuffer();
+          }).then(buf=>{
+            const blob=new Blob([buf],{type:'image/png'});
+            const objUrl=URL.createObjectURL(blob);
+            tile.onload=()=>URL.revokeObjectURL(objUrl);
+            tile.src=objUrl;
+            done(null,tile);
+            if(this.options.onTileSource) this.options.onTileSource('online');
+            // Кешуємо (для майбутньої конвертації в офлайн-карту) ТІЛЬКИ
+            // тайли в межах налаштованого діапазону зумів (за замовчуванням
+            // 17-19 — саме той рівень наближення, який реально потрібен на
+            // скутері; далекі "оглядові" зуми показуємо, але не зберігаємо,
+            // щоб не роздувати базу даними, які практично не використовуються).
+            if(z>=MapCfg.cacheZoomMin && z<=MapCfg.cacheZoomMax) cacheTileBytes(z,x,y,buf);
+          }).catch(err=>{ done(err,tile); });
+        }
+        return tile;
+      }
+    });
+  } else {
+    console.error('Leaflet не завантажився з CDN (L не визначено) — плитка карти буде недоступна, решта дашборду працює');
+  }
+}catch(e){ console.error('HybridTileLayer init failed:', e); }
+
+// ── Реєстр активних інстансів карти (зазвичай одна плитка, але про всяк
+// випадок — раптом хтось додасть дві) ──
+const mapInstances = {}; // {tileId: {map, marker, badge, wrapEl, viewportEl, heading, lastDblTap, zoomedIn, routeLine}}
+
+// ── Індикатор ONLINE/OFFLINE на плитці ──
+// refreshMapBadges() — стартова, "оптимістична" оцінка (є завантажений
+// .mbtiles чи ні), виставляється одразу при ініціалізації/завантаженні
+// файлу, ще ДО того, як хоч один тайл реально прогрузився.
+// reportTileSource() — вже СПРАВЖНІЙ, живий факт: кожен тайл у createTile()
+// вище повідомляє, звідки він насправді прийшов (offline з .mbtiles чи
+// online з мережі), і бейдж перемальовується за більшістю тайлів, що
+// прогрузились у межах останніх ~400мс (невеликий дебаунс, бо за раз
+// підвантажується десяток тайлів одночасно — рахувати кожен окремо без
+// паузи дало б безглузде миготіння).
+function refreshMapBadges(){
+  Object.values(mapInstances).forEach(st=>{
+    if(!st.badge) return;
+    st.badge.textContent = mbSqlDb ? 'OFFLINE' : 'ONLINE';
+    st.badge.className = 'map-tile-badge ' + (mbSqlDb ? 'map-tile-offline' : 'map-tile-online');
+  });
+}
+function reportTileSource(st, src){
+  if(!st) return;
+  st.tileSrcCounts = st.tileSrcCounts || {online:0, offline:0};
+  st.tileSrcCounts[src]++;
+  clearTimeout(st.tileSrcTimer);
+  st.tileSrcTimer = setTimeout(()=>{
+    const c = st.tileSrcCounts;
+    const isOffline = c.offline >= c.online; // рівність (напр. 0:0 не буває тут) — за офлайн, як оптимістичний варіант
+    st.tileSrcCounts = {online:0, offline:0};
+    if(!st.badge) return;
+    st.badge.textContent = isOffline ? 'OFFLINE' : 'ONLINE';
+    st.badge.className = 'map-tile-badge ' + (isOffline ? 'map-tile-offline' : 'map-tile-online');
+  }, 400);
+}
+
+// ── Тема карти (Темна/Світла) — тогл у Налаштування → Карта. "Темна" =
+// звичайні світлі OSM-тайли просто інвертуються фільтром (без окремого
+// набору нічних тайлів), "Світла" = тайли як є. Фільтр вішаємо саме на
+// .map-tile-viewport (не на .map-tile-inner), тому індикатор ONLINE/OFFLINE
+// (сусідній елемент, поза viewport) кольори не інвертує і лишається читабельним. ──
+function applyMapTheme(st){
+  if(!st.viewportEl) return;
+  st.viewportEl.classList.toggle('map-theme-dark', !!MapCfg.dark);
+}
+function applyMapThemeAll(){ Object.values(mapInstances).forEach(applyMapTheme); }
+
+function mkMapTile(tile){
+  const existing = mapInstances[tile.id];
+  if(existing && existing.viewportEl){
+    // Мапу вже ініціалізовано раніше — render() перебудовує ВЕСЬ #grid
+    // на кожну зміну розкладки (додавання/видалення/переставляння будь-якої
+    // плитки), тож просто переносимо вже живий DOM-вузол карти в нову
+    // обгортку замість пересоздання Leaflet-інстансу (інакше втратили б і
+    // саму карту, і імпортований маршрут на кожен такий рендер).
+    const container=document.createElement('div');container.style.cssText='position:relative;width:100%;height:100%;';
+    container.appendChild(existing.viewportEl);container.appendChild(existing.badge);
+    setTimeout(()=>{ try{ existing.map.invalidateSize(); sizeRotatedMapContainer(existing); }catch(e){} },0);
+    return container;
+  }
+  const viewport=document.createElement('div');viewport.className='map-tile-viewport';
+  const wrap=document.createElement('div');wrap.className='map-tile-inner';
+  wrap.id='leafmap_'+tile.id;
+  viewport.appendChild(wrap);
+  const badge=document.createElement('div');badge.className='map-tile-badge map-tile-online';badge.textContent='ONLINE';
+  const container=document.createElement('div');container.style.cssText='position:relative;width:100%;height:100%;';
+  container.appendChild(viewport);container.appendChild(badge);
+  // Ініціалізація Leaflet потребує, щоб контейнер уже був у DOM з реальними
+  // розмірами — відкладаємо на наступний тік рендеру.
+  setTimeout(()=>initLeafletMap(tile.id, wrap, badge, viewport), 0);
+  return container;
+}
+
+// ── Квадратний контейнер для обертання без порожніх кутів ──
+// Сторона квадрата = діагональ видимої плитки (+запас) — тоді хоч як його
+// не крутити навколо центру, видима прямокутна область завжди повністю
+// вкрита картою.
+function sizeRotatedMapContainer(st){
+  const w=st.viewportEl.clientWidth, h=st.viewportEl.clientHeight;
+  if(!w||!h) return;
+  const diag=Math.ceil(Math.sqrt(w*w+h*h))+24;
+  st.wrapEl.style.width=diag+'px';
+  st.wrapEl.style.height=diag+'px';
+  try{ st.map.invalidateSize(); }catch(e){}
+  applyMapTransform(st); // розмір змінився — переприв'язати transform-origin/зсув
+}
+function resizeAllMapTiles(){ Object.values(mapInstances).forEach(st=>{ if(st.viewportEl) sizeRotatedMapContainer(st); }); }
+let _mapResizeT=null;
+window.addEventListener('resize', ()=>{ clearTimeout(_mapResizeT); _mapResizeT=setTimeout(resizeAllMapTiles,200); });
+window.addEventListener('orientationchange', ()=>setTimeout(resizeAllMapTiles,300));
+
+// Позиціонування (центрування) + обертання квадрата — один transform, щоб
+// порядок translate→rotate був завжди однаковий.
+function applyMapTransform(st){
+  const deg = (st.heading!=null) ? -st.heading : 0; // мінус: обертаємо карту НАЗУСТРІЧ курсу, щоб напрям руху завжди дивився вгору
+  st.wrapEl.style.transform = `translate(-50%,-50%) rotate(${deg}deg)`;
+}
+function setMapHeading(st, heading){
+  if(heading==null || isNaN(heading)) return; // курс невідомий (стоїмо на місці) — лишаємо попередній поворот як є
+  st.heading = heading;
+  applyMapTransform(st);
+}
+
+function initLeafletMap(tileId, container, badge, viewport){
+  if(mapInstances[tileId]) return; // вже ініціалізовано (напр. повторний render())
+  if(typeof L==='undefined'){ container.textContent='Leaflet не завантажився (немає інтернету при першому запуску)'; return; }
+  if(!HybridTileLayer){ container.textContent='Карта тимчасово недоступна (не вдалось ініціалізувати тайл-шар)'; return; }
+  const startLat = _lastLat!=null ? _lastLat : 50.4501, startLon = _lastLon!=null ? _lastLon : 30.5234; // фолбек — Київ, якщо GPS ще не встиг спрацювати
+  container.style.width='100%';container.style.height='100%'; // тимчасово, sizeRotatedMapContainer нижче виставить реальний квадрат
+  const map = L.map(container, {
+    zoomControl:false, attributionControl:false, doubleClickZoom:false,
+    zoom: MapCfg.std, center:[startLat,startLon]
+  });
+  L.DomEvent.disableScrollPropagation(viewport); // щоб жест на карті не скролив саму сторінку в Bluefy
+  new HybridTileLayer({maxZoom:19, minZoom:2, onTileSource:src=>reportTileSource(st,src)}).addTo(map);
+  const marker = L.circleMarker([startLat,startLon], {radius:7,color:'#fff',weight:2,fillColor:'#37e0e6',fillOpacity:0.95}).addTo(map);
+
+  const st = { map, marker, badge, wrapEl:container, viewportEl:viewport, heading:null, lastDblTap:0, zoomedIn:false, routeLine:null };
+  mapInstances[tileId] = st;
+  sizeRotatedMapContainer(st); // ставить реальні width/height квадрата + transform
+  applyMapTheme(st);
+
+  // ── Тапи по карті: 2 = зум-тогл (або вихід з повноекранного огляду
+  // маршруту, якщо ми зараз у ньому), 3 = увійти в повноекранний огляд
+  // маршруту. Стандартний Leaflet dblclick вимкнено (doubleClickZoom:false)
+  // — на тач-пристроях 'dblclick' часто не спрацьовує надійно, тому рахуємо
+  // тапи самі. Рішення (2 чи 3) приймаємо з невеликою затримкою після
+  // ОСТАННЬОГО тапу в серії — інакше не встигнемо відрізнити "два" від
+  // "ще не дотапнутого треба" вчасно.
+  map.on('click', ()=>{
+    const now=Date.now();
+    st.tapBuf=(st.tapBuf||[]).filter(t=>now-t<700);
+    st.tapBuf.push(now);
+    clearTimeout(st.tapTimer);
+    st.tapTimer=setTimeout(()=>{
+      const n=st.tapBuf.length; st.tapBuf=[];
+      if(n>=3) enterMapFullscreen(st);
+      else if(n===2) handleDoubleTapMap(st);
+    }, 300);
+  });
+
+  applyMapRoute(st); // якщо маршрут вже був імпортований раніше — намалювати одразу
+  refreshMapBadges();
+}
+
+// Подвійний тап: у звичайному режимі — тогл зуму (як "Фото" на iOS);
+// якщо зараз у повноекранному огляді маршруту — повертає плитку в
+// попередній стан (той самий подвійний тап, просто інше значення в цьому
+// контексті, як і просив користувач).
+function handleDoubleTapMap(st){
+  if(st.routeViewMode){ exitMapFullscreen(st); return; }
+  st.zoomedIn = !st.zoomedIn;
+  const targetZoom = st.zoomedIn ? MapCfg.detail : MapCfg.std;
+  st.map.flyTo(st.marker.getLatLng(), targetZoom, {animate:true, duration:0.4});
+}
+
+// ── Тройний тап → повноекранний "огляд маршруту" ──
+// Розгортає плитку на весь екран дашборду (position:fixed, поверх усього
+// іншого — сітку взагалі не чіпаємо, її просто ховає під собою) і вимикає
+// автоматичне зміщення камери на 20-30% вперед та обертання за курсом —
+// щоб можна було вільно покрутити/поскролити карту й побачити весь
+// маршрут одним поглядом, без того, як його раз по раз повертає GPS.
+function enterMapFullscreen(st){
+  if(st.routeViewMode) return; // вже в цьому режимі
+  const tileEl=st.viewportEl.closest('.tile');
+  if(!tileEl) return;
+  st.routeViewMode=true;
+  tileEl.classList.add('map-fullscreen');
+  setTimeout(()=>{
+    sizeRotatedMapContainer(st); // квадрат під новий (повноекранний) розмір
+    st.heading=0; applyMapTransform(st); // north-up — для огляду обертання лише заважає
+    if(st.routeLine){
+      try{ st.map.fitBounds(st.routeLine.getBounds(), {padding:[24,24]}); }catch(e){}
+    }
+  }, 60);
+  sht('Огляд маршруту — подвійний тап, щоб повернутись');
+}
+function exitMapFullscreen(st){
+  const tileEl=st.viewportEl.closest('.tile');
+  if(tileEl) tileEl.classList.remove('map-fullscreen');
+  st.routeViewMode=false;
+  setTimeout(()=>{ sizeRotatedMapContainer(st); }, 60);
+}
+
+// ── Формула "точка попереду" (прямий геодезичний розрахунок, а не піксельний
+// panBy) — рахуємо реальну точку на distMeters метрів вперед по курсу від
+// поточної позиції, і саме ЇЇ ставимо в центр карти. Маркер лишається на
+// СПРАВЖНІХ координатах — тому він автоматично опиняється ближче до низу
+// екрана (позаду від центру-вперед), точно як синя стрілка в Google Maps.
+// Це набагато надійніше за піксельний panBy() у поєднанні з CSS-обертанням:
+// не треба узгоджувати знаки/тригонометрію повороту з піксельним зсувом. ──
+function destPoint(lat,lon,bearingDeg,distMeters){
+  const R=6371000, brng=bearingDeg*Math.PI/180;
+  const lat1=lat*Math.PI/180, lon1=lon*Math.PI/180;
+  const lat2=Math.asin(Math.sin(lat1)*Math.cos(distMeters/R)+Math.cos(lat1)*Math.sin(distMeters/R)*Math.cos(brng));
+  const lon2=lon1+Math.atan2(Math.sin(brng)*Math.sin(distMeters/R)*Math.cos(lat1), Math.cos(distMeters/R)-Math.sin(lat1)*Math.sin(lat2));
+  return [lat2*180/Math.PI, lon2*180/Math.PI];
+}
+
+// Викликається одразу після кожного нового пакета координат (гачок у
+// startGPS()/watchPosition, розділ вище). heading — pos.coords.heading
+// (компасний курс руху, у градусах від півночі за годинниковою стрілкою;
+// null/NaN, якщо пристрій стоїть на місці — GPS тоді курс не визначає).
+function updateAllMapTiles(lat, lon, heading){
+  Object.keys(mapInstances).forEach(id=>{
+    const st = mapInstances[id];
+    if(!st) return;
+    st.marker.setLatLng([lat,lon]);
+    if(st.routeViewMode){
+      // Повноекранний огляд маршруту (тройний тап) — юзер сам керує
+      // видом; маркер живий, але камеру й обертання не чіпаємо взагалі.
+      return;
+    }
+    setMapHeading(st, heading); // обертає карту так, щоб курс завжди дивився вгору; якщо курс невідомий — лишає попередній поворот
+    const h = st.viewportEl ? st.viewportEl.clientHeight : 0;
+    if(h){
+      const zoom = st.map.getZoom();
+      // Метрів на піксель у Web Mercator на цій широті/зумі (стандартна формула).
+      const metersPerPixel = 156543.03392 * Math.cos(lat*Math.PI/180) / Math.pow(2, zoom);
+      const aheadMeters = h * 0.30 * metersPerPixel; // 30% висоти видимої плитки — та сама пропорція, що просив користувач раніше
+      const bearing = (st.heading!=null) ? st.heading : 0;
+      const center = destPoint(lat, lon, bearing, aheadMeters);
+      st.map.setView(center, zoom, {animate:false});
+    } else {
+      st.map.panTo([lat,lon], {animate:false});
+    }
+  });
+}
+
+// ── Імпорт маршруту (GPX/GeoJSON) — та сама ідея, що й лінія треку в
+// TripViewer.html: яскрава полілінія поверх карти. ──
+function parseGpxToLatLngs(text){
+  const xml=new DOMParser().parseFromString(text,'application/xml');
+  return Array.from(xml.querySelectorAll('trkpt')).map(pt=>[
+    parseFloat(pt.getAttribute('lat')), parseFloat(pt.getAttribute('lon'))
+  ]).filter(p=>!isNaN(p[0])&&!isNaN(p[1]));
+}
+function parseGeoJsonToLatLngs(text){
+  const gj=JSON.parse(text);
+  const coordsList=[];
+  const grab=g=>{
+    if(!g) return;
+    if(g.type==='LineString') coordsList.push(g.coordinates);
+    else if(g.type==='MultiLineString') g.coordinates.forEach(c=>coordsList.push(c));
+    else if(g.type==='Feature') grab(g.geometry);
+    else if(g.type==='FeatureCollection') g.features.forEach(f=>grab(f.geometry));
+  };
+  grab(gj);
+  // GeoJSON зберігає [lon,lat] — Leaflet хоче [lat,lon]
+  return coordsList.flat().map(c=>[c[1],c[0]]);
+}
+let mapRouteLatLngs=null;
+let routeVisible=MapCfg.routeVisible!==false; // тогл кнопки "Маршрут" у топбарі — вимикає лінію, НЕ видаляючи самі дані; збережений стан з Налаштувань
+function applyMapRoute(st){
+  if(st.routeLine){ st.map.removeLayer(st.routeLine); st.routeLine=null; }
+  if(!routeVisible || !mapRouteLatLngs || !mapRouteLatLngs.length) return;
+  st.routeLine=L.polyline(mapRouteLatLngs,{color:'#37e0e6',weight:8,opacity:0.9}).addTo(st.map);
+}
+function applyRouteToAllMaps(){ Object.values(mapInstances).forEach(applyMapRoute); }
+async function loadSavedRouteIfAny(){
+  try{
+    const rec=await idbGet('routeFile');
+    if(rec && rec.text){
+      mapRouteLatLngs = rec.kind==='gpx' ? parseGpxToLatLngs(rec.text) : parseGeoJsonToLatLngs(rec.text);
+      // Той самий баг, що й з офлайн-картою: плитка карти могла вже
+      // намалюватись РАНІШЕ, ніж це асинхронне відновлення завершилось —
+      // без цього виклику лінія маршруту так і не з'явилась би на вже
+      // відкритій плитці, хоча дані вже підвантажені.
+      applyRouteToAllMaps();
+    }
+  }catch(e){ console.error('Не вдалось відновити збережений маршрут:',e); }
+}
+// ── Кнопка "🧭 Маршрут" у топбарі — тогл показу лінії + примусове
+// оновлення. Якщо дані маршруту в пам'яті ще порожні (саме той випадок,
+// коли застосунок перезапустили і лінія "не відобразилась") — перечитує
+// їх з IndexedDB просто зараз, а не чекає наступного відкриття Налаштувань.
+async function toggleRouteBtn(){
+  routeVisible = !routeVisible;
+  MapCfg.routeVisible = routeVisible;
+  ls('mapcfg', MapCfg); // щоб стан кнопки пережив перезапуск застосунку
+  if(routeVisible && (!mapRouteLatLngs || !mapRouteLatLngs.length)){
+    await loadSavedRouteIfAny(); // саме тут applyRouteToAllMaps() вже викликається всередині
+  } else {
+    applyRouteToAllMaps();
+  }
+  updateRouteBtnUI();
+  if(routeVisible && (!mapRouteLatLngs || !mapRouteLatLngs.length)){
+    sht('Маршрут не знайдено — імпортуй файл у Налаштування → Карта');
+  }
+}
+function updateRouteBtnUI(){
+  const b=document.getElementById('routeBtnTop');
+  if(!b) return;
+  const hasRoute = mapRouteLatLngs && mapRouteLatLngs.length>0;
+  b.classList.toggle('on', routeVisible && hasRoute);
+  b.textContent = (routeVisible && hasRoute) ? 'Маршрут' : (hasRoute ? 'Маршрут (сховано)' : 'Маршрут');
+}
+
+// ── Кнопка "Звук" у топбарі — той самий вимикач, що й у Налаштування →
+// СИГНАЛИ (AL.Sound_enabled), просто продубльований для швидкого доступу
+// без входу в модалку. Обидва місця лишаються синхронізовані.
+function toggleSoundBtn(){
+  AL.Sound_enabled = (AL.Sound_enabled===false); // якщо зараз вимкнено(false) — вмикаємо, і навпаки
+  ls('al',AL);
+  updateSoundBtnUI();
+  sht(AL.Sound_enabled ? 'Звук увімкнено' : 'Звук вимкнено');
+}
+function updateSoundBtnUI(){
+  const b=document.getElementById('sndBtnTop');
+  if(!b) return;
+  const on = AL.Sound_enabled!==false;
+  b.classList.toggle('on', on);
+  b.textContent = on ? 'Звук' : 'Звук (off)';
+}
+updateSoundBtnUI(); // початковий стан при завантаженні сторінки
+
+// ── Вкладка "КАРТА" у Налаштування ──
+function renderMapSettingsTab(body){
+  body.innerHTML=`
+    <div class="gt">Тема карти</div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;">
+      Темна — звичні світлі OSM-тайли інвертуються фільтром, щоб не сліпило
+      вночі. Світла — тайли як є, для дня.
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:3px 5px 12px;">
+      <label class="tsw"><input type="checkbox" id="ai_mdark" ${MapCfg.dark?'checked':''}><span class="sldr"></span></label>
+      <span id="ai_mdark_v" style="font-size:14px;font-weight:600;">${MapCfg.dark?'🌙 Темна':'☀️ Світла'}</span>
+    </div>
+
+    <div class="gt" style="margin-top:16px;">Масштаб карти</div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 10px;">
+      Два фіксовані рівні зуму — один звичайний, другий куди перемикає
+      подвійний тап по карті (і назад). Який з них ближній, а який дальній —
+      обирай сам повзунками, тому без прив'язки в назві.
+    </div>
+    <div class="gt">Зум — положення 1</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 5px 10px;">
+      <input type="range" id="ai_mz1" min="10" max="19" step="1" value="${MapCfg.std}" style="flex:1;">
+      <span id="ai_mz1_v" style="font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;">${MapCfg.std}</span>
+    </div>
+    <div class="gt">Зум — положення 2 (Double-Tap)</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 5px 10px;">
+      <input type="range" id="ai_mz2" min="10" max="19" step="1" value="${MapCfg.detail}" style="flex:1;">
+      <span id="ai_mz2_v" style="font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;">${MapCfg.detail}</span>
+    </div>
+    <button class="ab pr" style="margin-top:6px;" onclick="svMapCfg()">Зберегти масштаб</button>
+
+    <div class="gt" style="margin-top:16px;">Офлайн-карта (.mbtiles)</div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;">
+      ${mbFileName ? 'Завантажено: '+mbFileName : 'Файл не завантажено — карта працює лише онлайн (OpenStreetMap).'}
+      Файл живе всередині застосунку (IndexedDB), а не у Файлах на телефоні —
+      кнопка "Експортувати" нижче зробить справжню копію, яку зможеш зберегти
+      у своїй папці/iCloud.
+    </div>
+    <div style="display:flex;gap:7px;">
+      <label class="ab" style="background:#222;color:#fff;flex:1;text-align:center;">
+        📂 Обрати .mbtiles<input type="file" id="ai_mbf" accept=".mbtiles,application/x-sqlite3,application/octet-stream,*/*" style="display:none;">
+      </label>
+      ${mbFileName ? '<button class="ab dn" style="flex:1;" onclick="clearMbtiles()">🗑 Прибрати</button>' : ''}
+    </div>
+    ${mbFileName ? '<button class="ab pr" style="margin-top:7px;width:100%;" onclick="exportMbtiles()">⬇️ Експортувати у Файли/iCloud</button>' : ''}
+    <div style="font-size:11px;color:var(--muted);padding:6px 5px 0;">
+      ⚠️ Це знімок на момент вибору файлу — застосунок НЕ стежить за ним. Якщо
+      потім оновиш/заміниш файл на телефоні, треба буде натиснути "📂 Обрати
+      .mbtiles" ще раз і вибрати його заново — автоматично оновлення не
+      підхопиться (обмеження iOS Safari/Bluefy, не наш код).
+    </div>
+
+    <div class="gt" style="margin-top:16px;">Накопичення тайлів (авто-офлайн)</div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;">
+      Поки катаєшся з інтернетом, кожен переглянутий тайл тихо зберігається
+      окремо (справжній кеш браузера з коду не читається — тому робимо
+      власний). Кнопкою нижче можна будь-коли перетворити накопичене на
+      справжню офлайн-карту — вона домержується прямо у вже завантажений
+      .mbtiles вище (нічого не стирає, тільки додає).
+    </div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;">
+      Зберігаємо тільки ті зуми, які реально потрібні (щоб база не роздувалась
+      далекими "оглядовими" рівнями) — інші зуми так само показуються, просто
+      не накопичуються.
+    </div>
+    <div class="gt">Кешувати зум — від</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 5px 10px;">
+      <input type="range" id="ai_czmin" min="10" max="19" step="1" value="${MapCfg.cacheZoomMin}" style="flex:1;">
+      <span id="ai_czmin_v" style="font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;">${MapCfg.cacheZoomMin}</span>
+    </div>
+    <div class="gt">Кешувати зум — до</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:3px 5px 10px;">
+      <input type="range" id="ai_czmax" min="10" max="19" step="1" value="${MapCfg.cacheZoomMax}" style="flex:1;">
+      <span id="ai_czmax_v" style="font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;">${MapCfg.cacheZoomMax}</span>
+    </div>
+    <button class="ab pr" style="margin-top:2px;" onclick="svCacheZoom()">Зберегти діапазон</button>
+    <div style="font-size:13px;color:var(--text);padding:8px 5px 8px;">
+      Накопичено тайлів: <b id="ai_tcnt">…</b>
+    </div>
+    <div style="display:flex;gap:7px;">
+      <button class="ab pr" style="flex:1;" onclick="doConvertCachedTiles()">💾 В офлайн-карту</button>
+      <button class="ab dn" style="flex:1;" onclick="doClearCachedTiles()">🗑 Очистити кеш</button>
+    </div>
+
+    <div class="gt" style="margin-top:16px;">Маршрут (GPX / GeoJSON)</div>
+    <div style="font-size:12px;color:var(--muted);padding:2px 5px 8px;">
+      ${mapRouteLatLngs ? 'Маршрут завантажено ('+mapRouteLatLngs.length+' точок), малюється лінією на карті.' : 'Маршрут не завантажено.'}
+      Маршрут з Google Maps → GPX можна зробити через
+      <a href="https://www.maptogpx.com/" target="_blank" style="color:var(--cyan);">maptogpx.com</a>.
+    </div>
+    <div style="display:flex;gap:7px;">
+      <label class="ab" style="background:#222;color:#fff;flex:1;text-align:center;">
+        🧭 Обрати файл<input type="file" id="ai_rtf" accept=".gpx,.json,application/gpx+xml,application/json,text/xml,application/xml,*/*" style="display:none;">
+      </label>
+      ${mapRouteLatLngs ? '<button class="ab dn" style="flex:1;" onclick="clearMapRoute()">🗑 Прибрати</button>' : ''}
+    </div>
+  `;
+  idbCountTiles().then(n=>{ const el=document.getElementById('ai_tcnt'); if(el) el.textContent=n; });
+  const mdark=document.getElementById('ai_mdark');
+  mdark.addEventListener('change',()=>{
+    MapCfg.dark = mdark.checked;
+    document.getElementById('ai_mdark_v').textContent = MapCfg.dark ? '🌙 Темна' : '☀️ Світла';
+    applyMapThemeAll(); // живий перегляд на будь-якій відкритій зараз плитці карти
+    ls('mapcfg', MapCfg); // тогл — не потребує окремої кнопки "Зберегти", зберігаємо одразу
+  });
+  const z1=document.getElementById('ai_mz1'), z2=document.getElementById('ai_mz2');
+  z1.addEventListener('input',()=>{
+    document.getElementById('ai_mz1_v').textContent=z1.value;
+    Object.values(mapInstances).forEach(st=>st.map.setZoom(parseInt(z1.value))); // живий перегляд на відкритій плитці
+  });
+  z2.addEventListener('input',()=>{
+    document.getElementById('ai_mz2_v').textContent=z2.value;
+    Object.values(mapInstances).forEach(st=>st.map.setZoom(parseInt(z2.value))); // теж живий перегляд — щоб було видно, наскільки це "близько"
+  });
+  const czmin=document.getElementById('ai_czmin'), czmax=document.getElementById('ai_czmax');
+  czmin.addEventListener('input',()=>{ document.getElementById('ai_czmin_v').textContent=czmin.value; });
+  czmax.addEventListener('input',()=>{ document.getElementById('ai_czmax_v').textContent=czmax.value; });
+  document.getElementById('ai_mbf').addEventListener('change', async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    sht('Завантажую .mbtiles…');
+    try{
+      const buf=await f.arrayBuffer();
+      await loadMbtilesFromBytes(buf, f.name);
+      await idbSet('mbtilesFile', {bytes:buf, name:f.name});
+      Object.values(mapInstances).forEach(st=>st.map.eachLayer(l=>{ if(HybridTileLayer && l instanceof HybridTileLayer) l.redraw(); }));
+      refreshMapBadges();
+      sht('Офлайн-карту завантажено: '+f.name);
+      renderMapSettingsTab(body);
+    }catch(err){ sht('Помилка читання .mbtiles: '+err.message); }
+  });
+  document.getElementById('ai_rtf').addEventListener('change', async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const nameLC=f.name.toLowerCase();
+    // accept у самого <input> тепер навмисно широкий (баг iOS-пікера: GPX
+    // без зареєстрованого системного типу файлу — інакше система сіріла
+    // сам файл, дивись коментар біля accept вище), тому тут перевіряємо
+    // розширення самі й одразу відсіюємо явно не те, замість спроби
+    // розпарсити випадковий файл як маршрут.
+    let kind=null;
+    if(nameLC.endsWith('.gpx')) kind='gpx';
+    else if(nameLC.endsWith('.json') || nameLC.endsWith('.geojson')) kind='json';
+    else { sht('Це не GPX і не GeoJSON (за розширенням файлу) — обери інший файл'); return; }
+    const text=await f.text();
+    try{
+      mapRouteLatLngs = kind==='gpx' ? parseGpxToLatLngs(text) : parseGeoJsonToLatLngs(text);
+      if(!mapRouteLatLngs.length) throw new Error('у файлі не знайдено жодної точки маршруту');
+      await idbSet('routeFile', {text, kind, name:f.name});
+      routeVisible=true; // новоімпортований маршрут показуємо одразу
+      applyRouteToAllMaps();
+      updateRouteBtnUI();
+      sht('Маршрут завантажено ('+mapRouteLatLngs.length+' точок)');
+      renderMapSettingsTab(body);
+    }catch(err){ sht('Помилка читання маршруту: '+err.message); }
+  });
+}
+function svMapCfg(){
+  MapCfg.std = parseInt(document.getElementById('ai_mz1').value)||MAP_DA.std;
+  MapCfg.detail = parseInt(document.getElementById('ai_mz2').value)||MAP_DA.detail;
+  ls('mapcfg', MapCfg);
+  sht('Масштаб карти збережено');
+}
+function svCacheZoom(){
+  let mn=parseInt(document.getElementById('ai_czmin').value)||MAP_DA.cacheZoomMin;
+  let mx=parseInt(document.getElementById('ai_czmax').value)||MAP_DA.cacheZoomMax;
+  if(mn>mx){ const t=mn; mn=mx; mx=t; } // про всяк випадок, якщо "від" виявився більшим за "до"
+  MapCfg.cacheZoomMin=mn; MapCfg.cacheZoomMax=mx;
+  ls('mapcfg', MapCfg);
+  sht('Діапазон кешування: зум '+mn+'–'+mx);
+}
+async function clearMbtiles(){
+  mbSqlDb=null; mbFileName=null;
+  await idbDel('mbtilesFile');
+  Object.values(mapInstances).forEach(st=>st.map.eachLayer(l=>{ if(HybridTileLayer && l instanceof HybridTileLayer) l.redraw(); }));
+  refreshMapBadges();
+  bmain(); sht('Офлайн-карту прибрано — тепер лише онлайн');
+}
+// ── Робить із внутрішньої (IndexedDB) офлайн-карти СПРАВЖНІЙ файл, який
+// iOS дає зберегти куди завгодно (Файли/iCloud Drive/будь-яка папка) —
+// саме цього просив користувач: "щоб офлайн карта була у моїй папці". ──
+async function exportMbtiles(){
+  if(!mbSqlDb){ sht('Немає офлайн-карти для експорту'); return; }
+  const fname=mbFileName||'offline-map.mbtiles';
+  let bytes;
+  try{
+    bytes=mbSqlDb.export(); // Uint8Array усього SQLite-файлу
+  }catch(e){ sht('Помилка експорту: '+e.message); return; }
+
+  // ── Спроба 1: Web Share API (системне меню "Поділитися" — AirDrop,
+  // Зберегти у Файли, Повідомлення тощо). Деякі спрощені WebView-обгортки
+  // (як-от Bluefy) підтримують ЦЕ, навіть не реалізуючи повноцінне
+  // завантаження файлів через <a download> (спроба 2 нижче) — тому пробуємо
+  // її першою. ──
+  try{
+    const file=new File([bytes], fname, {type:'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      // ВАЖЛИВО (той самий фікс, що й у tripExportGPX): не передаємо title
+      // разом з files — на iOS деякі цілі "Поділитися" (в т.ч. "Зберегти у
+      // Файли") трактують title як окремий текстовий об'єкт для шерингу і
+      // створюють поруч із .mbtiles ще й зайвий крихітний файл. Без title
+      // лишається рівно один файл.
+      await navigator.share({files:[file]});
+      sht('Готово — обери "Зберегти у Файли" в меню поділитися');
+      return;
+    }
+  }catch(e){
+    if(e && e.name==='AbortError'){ return; } // юзер сам закрив меню поділитися — це не помилка
+    console.warn('[export] navigator.share не спрацював, пробую запасний варіант:', e);
+  }
+
+  // ── Спроба 2: класичний <a download> (працює у звичайному Safari, але
+  // НЕ в усіх спрощених WebView-обгортках без підтримки завантажень). ──
+  try{
+    const blob=new Blob([bytes], {type:'application/octet-stream'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    sht('Спробував завантажити "'+fname+'" — якщо нічого не відкрилось, Bluefy, схоже, не підтримує експорт файлів взагалі');
+  }catch(e){ sht('Помилка експорту: '+e.message); }
+}
+async function clearMapRoute(){
+  mapRouteLatLngs=null;
+  await idbDel('routeFile');
+  Object.values(mapInstances).forEach(st=>{ if(st.routeLine){ st.map.removeLayer(st.routeLine); st.routeLine=null; } });
+  updateRouteBtnUI();
+  bmain(); sht('Маршрут прибрано');
+}
+
+async function doConvertCachedTiles(){
+  sht('Конвертую накопичені тайли…');
+  try{
+    const res=await convertCachedTilesToMbtiles();
+    if(!res.ok){ sht('Накопичених тайлів ще немає — покатайся з інтернетом, і вони з\'являться'); return; }
+    Object.values(mapInstances).forEach(st=>st.map.eachLayer(l=>{ if(HybridTileLayer && l instanceof HybridTileLayer) l.redraw(); }));
+    refreshMapBadges();
+    sht('Готово: '+res.tilesCount+' тайлів домержовано в офлайн-карту');
+    bmain();
+  }catch(e){ sht('Помилка конвертації: '+e.message); }
+}
+async function doClearCachedTiles(){
+  await idbClearTiles();
+  sht('Накопичений кеш тайлів очищено (сама офлайн-карта не зачеплена)');
+  bmain();
+}
+
+// Відновлюємо збережені файли одразу при завантаженні (без повторного тапу)
+try{ loadSavedMbtilesIfAny().then(refreshMapSettingsIfOpen); }catch(e){}
+try{ loadSavedRouteIfAny().then(()=>{ refreshMapSettingsIfOpen(); updateRouteBtnUI(); }); }catch(e){}
+// Відновлення файлів з IndexedDB асинхронне — якщо юзер встиг відкрити
+// Налаштування → Карта РАНІШЕ, ніж воно завершилось, кнопки "Прибрати"/
+// "Експортувати" не з'являлись би до наступного відкриття вкладки. Тепер
+// перемальовуємо вкладку одразу, як тільки відновлення дійсно завершилось.
+function refreshMapSettingsIfOpen(){
+  try{
+    const modal=document.getElementById('m');
+    if(modal && modal.classList.contains('sh') && curTab===4) bmain();
+  }catch(e){}
 }
 
 /* ── АДАПТИВНИЙ ВІДЕО-ПОТОК (ШВИДКІСТЬ + ТЕМПЕРАТУРА) ── */
@@ -2093,11 +3573,6 @@ document.addEventListener('visibilitychange', ()=>{
   }
 });
 
-document.getElementById('resetBtn').addEventListener('click',()=>{
-  localStorage.clear();
-  location.reload();
-});
-
 /* ── ФУНКЦІОНАЛ НАЛАШТУВАННЯ ПЛИТОК ТА МОДАЛОК ── */
 let curTab=0;
 function st(t){
@@ -2106,6 +3581,7 @@ function st(t){
   document.getElementById('t1').className='tab'+(t===1?' a':'');
   document.getElementById('t2').className='tab'+(t===2?' a':'');
   document.getElementById('t3').className='tab'+(t===3?' a':'');
+  document.getElementById('t4').className='tab'+(t===4?' a':'');
   bmain();
 }
 
@@ -2208,6 +3684,19 @@ function bmain(){
     impBtn.addEventListener('click',importSettings);
     d.appendChild(impBtn);
 
+    const rstBtn=document.createElement('button');rstBtn.className='ab dn';rstBtn.style.marginTop='10px';
+    rstBtn.textContent='♻️ Скинути все й перезапустити';
+    rstBtn.addEventListener('click',()=>{
+      // Раніше це була окрема кнопка "Скинути" прямо в топбарі — переїхала
+      // сюди, і тепер із підтвердженням (одна помилкова кнопка в топбарі
+      // могла стерти все без жодного попередження).
+      if(confirm('Це видалить УСІ налаштування (розкладку плиток, пороги, базу камер, збережену карту тощо) і перезапустить застосунок. Продовжити?')){
+        localStorage.clear();
+        location.reload();
+      }
+    });
+    d.appendChild(rstBtn);
+
     body.appendChild(d);
   } else if(curTab===1){
     body.innerHTML=`
@@ -2245,6 +3734,9 @@ function bmain(){
         <button class="ab" style="background:#222;color:#ff8080;" onclick="clearCameraDB()">🗑 Очистити базу</button>
         <input type="file" id="camCsvInput" accept=".csv,text/csv" style="display:none;">
       </div>
+      <div style="font-size:12px;padding:2px 5px 6px;">
+        Джерело бази для оновлення: <a href="https://data.gov.tw/dataset/7320" target="_blank" style="color:var(--cyan);">data.gov.tw/dataset/7320</a>
+      </div>
       <div id="camDbStatus" style="font-size:12px;color:var(--muted);padding:2px 5px 10px;"></div>
       <button class="ab pr" style="margin-top:12px;" onclick="svAl()">Зберегти сигнали</button>
     `;
@@ -2281,7 +3773,7 @@ function bmain(){
       </div>
       <button class="ab pr" style="margin-top:12px;" onclick="svFall()">Зберегти пороги падіння</button>
     `;
-  } else {
+  } else if(curTab===3) {
     body.innerHTML=`
       <div class="gt">Насиченість плиток попередження</div>
       <div style="font-size:12px;color:var(--muted);padding:2px 5px 10px;">
@@ -2313,29 +3805,76 @@ function bmain(){
     scEl.addEventListener('input',()=>{document.getElementById('ai_sc_v').textContent=scEl.value+'%';previewSat('cold',scEl.value);});
     swEl.addEventListener('input',()=>{document.getElementById('ai_sw_v').textContent=swEl.value+'%';previewSat('warn',swEl.value);});
     saEl.addEventListener('input',()=>{document.getElementById('ai_sa_v').textContent=saEl.value+'%';previewSat('alrt',saEl.value);});
+  } else {
+    renderMapSettingsTab(body);
   }
 }
 
 /* ── ЕКСПОРТ / ІМПОРТ НАЛАШТУВАНЬ ── */
 // Зберігає розташування тайлів, які параметри в них виводяться, та всі пороги сигналів
 // (температура, вольтаж, ліміт швидкості) і калібрування TPS в один текстовий блок.
-function exportSettings(){
-  const dump={workspaces:workspaces, activeWs:activeWsId, al:AL, tpscal:TC, v:2};
-  const text=JSON.stringify(dump);
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(()=>{
-      sht('Скопійовано в буфер обміну! Встав кудись, щоб зберегти.');
-    }).catch(()=>{
+async function exportSettings(){
+  const dump={
+    workspaces:workspaces, activeWs:activeWsId, al:AL, tpscal:TC,
+    mapcfg: (typeof MapCfg!=='undefined')?MapCfg:undefined,
+    tripParamOrder: tripParamOrder,
+    v:3,
+  };
+  const text=JSON.stringify(dump,null,2);
+  const fname='vracer-settings-'+new Date().toISOString().slice(0,10)+'.json';
+
+  // Той самий надійний шлях, що й для експорту офлайн-карти: спершу Web
+  // Share (справжній файл у "Зберегти у Файли"), без title (інакше на iOS
+  // деякі цілі "Поділитися" створюють поруч зайвий текстовий файл), і лише
+  // якщо це не спрацювало — запасний варіант через <a download>.
+  try{
+    const file=new File([text], fname, {type:'application/json'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file]});
+      sht('Налаштування збережено: '+fname);
+      return;
+    }
+  }catch(e){
+    if(e && e.name==='AbortError') return;
+    console.warn('[settings export] navigator.share не спрацював, пробую запасний варіант:', e);
+  }
+  try{
+    const blob=new Blob([text],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    sht('Спробував зберегти "'+fname+'"');
+  }catch(e){
+    // Зовсім останній запасний варіант — хоча б у буфер обміну, щоб нічого не втратити.
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>sht('Файл не вдався — скопійовано в буфер обміну натомість'));
+    } else {
       prompt('Скопіюй цей текст (Ctrl/Cmd+C) і збережи його:', text);
-    });
-  } else {
-    prompt('Скопіюй цей текст (Ctrl/Cmd+C) і збережи його:', text);
+    }
   }
 }
 
 function importSettings(){
-  const text=prompt('Встав сюди раніше скопійований текст налаштувань:');
-  if(!text)return;
+  // Пікер файлу (з тим самим широким accept — той самий баг iOS-пікера, що
+  // й з GPX/mbtiles, коли системний пікер сірить .json без зареєстрованого
+  // типу) — а якщо юзер натомість вставив текст напряму в буфер, лишаємо
+  // старий prompt() як запасний шлях.
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.json,application/json,text/plain,*/*'; inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.addEventListener('change', async e=>{
+    const f=e.target.files[0];
+    document.body.removeChild(inp);
+    if(!f){ importSettingsFromText(prompt('Встав сюди раніше скопійований текст налаштувань:')); return; }
+    try{ importSettingsFromText(await f.text()); }
+    catch(err){ sht('Помилка читання файлу: '+err.message); }
+  });
+  inp.click();
+}
+function importSettingsFromText(text){
+  if(!text) return;
   try{
     const dump=JSON.parse(text);
     if(!dump || typeof dump!=='object') throw new Error('bad format');
@@ -2351,6 +3890,8 @@ function importSettings(){
 
     if(dump.al){ AL={...DA,...dump.al}; ls('al',AL); }
     if(dump.tpscal){ TC={...{min:0,max:170},...dump.tpscal}; ls('tpscal',TC); }
+    if(dump.mapcfg){ ls('mapcfg', dump.mapcfg); }
+    if(Array.isArray(dump.tripParamOrder)){ ls('tripParamOrder', dump.tripParamOrder); }
     sht('Налаштування імпортовано, перезавантажую…');
     setTimeout(()=>location.reload(),800);
   }catch(e){
@@ -2367,6 +3908,7 @@ function svAl(){
   AL.Spd_enabled=document.getElementById('ai_se').checked;
   AL.Sound_enabled=document.getElementById('ai_snd').checked;
   ls('al',AL);ca();sht('Сигнали збережено');
+  updateSoundBtnUI();
 }
 
 function svFall(){
@@ -2480,13 +4022,19 @@ function cpk(){
     
     const szg=document.createElement('div');szg.className='gt';szg.textContent='Розмір';pb.appendChild(szg);
     const szr=document.createElement('div');szr.className='szr';
-    [['s1','Міні'],['s21','1×1'],['s41','2×1'],['s22','2×2']].forEach(([v,l])=>{
+    [['s1','Міні'],['s21','1×1'],['s41','2×1'],['s22','2×2'],['s23','2×3']].forEach(([v,l])=>{
       const b=document.createElement('div');b.className='sb'+(((ptile&&ptile.sz)||'s1')===v?' sel':'');
       b.textContent=l;b.addEventListener('click',()=>selsz(v));szr.appendChild(b);
     });pb.appendChild(szr);
     
     const db=document.createElement('button');db.className='ab dn';db.textContent='🗑 Видалити';
-    db.addEventListener('click',()=>{lay=lay.filter(t=>t.id!==ptile.id);saveLay();m.classList.remove('sh');render();});
+    db.addEventListener('click',()=>{
+      if(ptile.k==='MapTile' && mapInstances[ptile.id]){
+        try{ mapInstances[ptile.id].map.remove(); }catch(err){}
+        delete mapInstances[ptile.id];
+      }
+      lay=lay.filter(t=>t.id!==ptile.id);saveLay();m.classList.remove('sh');render();
+    });
     pb.appendChild(db);
     m.classList.add('sh');
   } else if(editMode && !ptile){
@@ -2496,7 +4044,7 @@ function cpk(){
       const item=document.createElement('div');item.className='pi';
       item.innerHTML=`<div class="pn2">${P[k].n}</div>`;
       item.addEventListener('click',()=>{
-        nid++;const nt={id:'t'+nid,k:k,st:'flat',sz:'s1'};
+        nid++;const nt={id:'t'+nid,k:k,st:'flat',sz:(k==='MapTile'?'s22':'s1')};
         lay.push(nt);saveLay();m.classList.remove('sh');render();
       });pl.appendChild(item);
     });
