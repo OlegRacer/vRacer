@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>kb-test — стенд для бага з клавіатурою</title>
 <style>
-  :root{ --th:48px; }
+  :root{ --th:48px; --vh: 100vh; }
   html,body{margin:0;padding:0;background:#000;color:#f2f2f0;font-family:-apple-system,system-ui,sans-serif;
-    width:100%;overflow-x:hidden;}
+    width:100%;height:100%;height:var(--vh);overflow-x:hidden;}
   body.no-scroll{overflow:hidden;touch-action:none;overscroll-behavior:none;}
 
   .tb{position:fixed;top:0;left:0;right:0;height:var(--th);display:flex;align-items:center;
@@ -16,9 +16,6 @@
   .tb button{background:#222;color:#fff;border:1px solid #444;border-radius:8px;padding:6px 10px;font-size:13px;}
   .tb .stat{margin-left:auto;font-size:11px;color:#8f8;white-space:nowrap;}
 
-  /* Плавуча колонка кнопок — імітує .map-nav-fab з основної програми,
-     та сама причина скарги "тач-зони зміщуються" стосується саме таких
-     fixed-позиціонованих елементів поза звичайним потоком документа. */
   .fab-col{position:fixed;right:6px;top:120px;display:flex;flex-direction:column;gap:8px;z-index:40;}
   .fab-col button{width:44px;height:44px;border-radius:50%;background:#1a1a1a;border:1px solid #555;color:#fff;font-size:18px;}
 
@@ -27,14 +24,12 @@
   .tile{background:#151515;border:1px solid #333;border-radius:10px;height:90px;
     display:flex;align-items:center;justify-content:center;font-size:12px;color:#888;}
 
-  /* Панель з полем вводу — точна копія .poi-editor-bar/.kb-top з основної
-     програми: за замовчуванням унизу, на фокус переїжджає під топбар. */
   .input-bar{position:fixed;left:8px;right:8px;bottom:16px;display:flex;gap:8px;
     background:#151515;border:1px solid #444;border-radius:10px;padding:8px;z-index:60;
     transition:top .15s ease;}
   .input-bar.kb-top{ top:calc(var(--th) + 8px); bottom:auto; }
   .input-bar input{flex:1;min-width:0;padding:8px;border-radius:8px;border:1px solid #444;
-    background:#111;color:#fff;font-size:16px;} /* 16px мінімум — інакше авто-зум iOS */
+    background:#111;color:#fff;font-size:16px;}
   .input-bar button{flex-shrink:0;padding:8px 10px;border-radius:8px;border:1px solid #555;
     background:#222;color:#fff;font-size:13px;}
 
@@ -92,7 +87,25 @@
 </div>
 
 <script>
-// ── Той самий код, слово-в-слово, що й в основній програмі (з виправленням) ──────────────
+// Автоматичне коригування висоти через visualViewport для Bluefy / WebView
+function updateViewportHeight() {
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
+  
+  // Коригуємо позицію відносно прокрутки візуального в’юпорта, щоб фіксовані елементи не плавали
+  if (window.visualViewport) {
+    const offsetTop = window.visualViewport.offsetTop;
+    document.body.style.transform = `translateY(${offsetTop}px)`;
+  }
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', updateViewportHeight);
+  window.visualViewport.addEventListener('scroll', updateViewportHeight);
+}
+window.addEventListener('resize', updateViewportHeight);
+updateViewportHeight();
+
 const _scrollLockSources = new Set();
 function setBodyScrollLock(source, locked){
   if(locked) _scrollLockSources.add(source); else _scrollLockSources.delete(source);
@@ -122,13 +135,11 @@ function createScrollHack(options){
       log('triggerHack(): SKIP — activeElement є полем вводу ('+ae.id+')');
       return;
     }
-    if(touchActive){ pendingAfterTouch=true; log('triggerHack(): SKIP — touchActive, відкладено до touchend'); return; }
+    if(touchActive){ pendingAfterTouch=true; log('triggerHack(): SKIP — touchActive'); return; }
     if(isManuallyLocked && isLocked) return;
     if(!isManuallyLocked) updateLockState(false);
     
-    // ВИПРАВЛЕННЯ: Видалено примусовий виклик window.scrollTo({top:1}), 
-    // який ламав координати visualViewport та викликав зміщення тач-зони fixed елементів.
-    log('triggerHack(): перевірку пройдено (без scrollTo)');
+    log('triggerHack(): перевірку пройдено');
 
     clearTimeout(scrollTimer);
     scrollTimer=setTimeout(function(){
@@ -137,9 +148,7 @@ function createScrollHack(options){
   }
 
   function initListeners(){
-    document.addEventListener('visibilitychange', function(){
-      if(!document.hidden) triggerHack();
-    });
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) triggerHack(); });
     window.addEventListener('focus', triggerHack);
     window.addEventListener('pageshow', triggerHack);
     window.addEventListener('orientationchange', function(){ setTimeout(triggerHack, 200); });
@@ -180,15 +189,14 @@ function createScrollHack(options){
   };
 }
 
-// ── Інструментарій ЛИШЕ для цього тестового стенду (не з основної програми) ──
 let hack=null;
 function startHack(){ hack=createScrollHack({delay:3000, onStateChange:(locked)=>log('onStateChange: locked='+locked)}); }
-function stopHack(){ hack=null; document.body.classList.remove('no-scroll'); log('Хак вимкнено (для порівняння поведінки без нього)'); }
+function stopHack(){ hack=null; document.body.classList.remove('no-scroll'); document.body.style.transform=''; log('Хак вимкнено'); }
 
 document.getElementById('hackToggle').addEventListener('change', function(e){
   if(e.target.checked) startHack(); else stopHack();
 });
-startHack(); // за замовчуванням увімкнено, як в основній програмі
+startHack();
 
 const grid=document.getElementById('grid');
 for(let i=1;i<=9;i++){ const t=document.createElement('div'); t.className='tile'; t.textContent='tile '+i; grid.appendChild(t); }
@@ -213,9 +221,6 @@ function snapshot(){
 function refreshStat(){ document.getElementById('stat').textContent=snapshot(); }
 document.getElementById('measureBtn').addEventListener('click', ()=>{ log('РУЧНИЙ замір: '+snapshot()); });
 
-// Автоматичний лог на кожній події, яка теоретично МОГЛА Б спричинити зсув —
-// саме послідовність цих подій (що спрацювало РАНІШЕ/ПІЗНІШЕ за що) і є
-// ключем до бага, судячи з попередніх спроб.
 ['resize','scroll','orientationchange','focus','blur'].forEach(function(evt){
   window.addEventListener(evt, function(){ log('window:'+evt+'  →  '+snapshot()); refreshStat(); }, true);
 });
@@ -237,8 +242,6 @@ testInput.addEventListener('blur', function(){
 });
 document.getElementById('closeKbBtn').addEventListener('click', function(){ testInput.blur(); });
 
-// Кнопка "Дощ" — той самий жест утримання 1.5с, що й в основній програмі,
-// щоб перевірити чи саме довге утримання конфліктує зі скрол-хаком.
 let rainHoldT=null;
 const rainBtn=document.getElementById('rainBtn');
 function startHold(){ rainHoldT=setTimeout(()=>{ log('Дощ: утримання 1.5с спрацювало'); rainBtn.style.background='#036'; }, 1500); }
