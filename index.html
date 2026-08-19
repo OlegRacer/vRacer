@@ -92,7 +92,7 @@
 </div>
 
 <script>
-// ── Той самий код, слово-в-слово, що й в основній програмі ──────────────
+// ── Той самий код, слово-в-слово, що й в основній програмі (з виправленням) ──────────────
 const _scrollLockSources = new Set();
 function setBodyScrollLock(source, locked){
   if(locked) _scrollLockSources.add(source); else _scrollLockSources.delete(source);
@@ -125,7 +125,11 @@ function createScrollHack(options){
     if(touchActive){ pendingAfterTouch=true; log('triggerHack(): SKIP — touchActive, відкладено до touchend'); return; }
     if(isManuallyLocked && isLocked) return;
     if(!isManuallyLocked) updateLockState(false);
-    if(window.scrollY===0){ window.scrollTo({top:1, behavior:'instant'}); log('triggerHack(): scrollTo(top:1) виконано'); }
+    
+    // ВИПРАВЛЕННЯ: Видалено примусовий виклик window.scrollTo({top:1}), 
+    // який ламав координати visualViewport та викликав зміщення тач-зони fixed елементів.
+    log('triggerHack(): перевірку пройдено (без scrollTo)');
+
     clearTimeout(scrollTimer);
     scrollTimer=setTimeout(function(){
       if(!isManuallyLocked) updateLockState(true);
