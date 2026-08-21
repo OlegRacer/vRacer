@@ -514,13 +514,6 @@ status,brand,name,lat,lon,hours,toilet
 Дані:
 ${chunk.data}
 
-Правила:
-1. Перевір реальний стан точок через пошук (Google Maps / OpenStreetMap) у цій зоні.
-2. Якщо магазин фізично є на карті, але в базі не вистачає якихось даних (наприклад, годин чи туалету) — не чіпай його, він вважається робочим.
-3. Якщо точки немає або вона закрита — познач як 'CLOSED'.
-4. Якщо з'явилися нові магазини цих же брендів — познач як 'NEW'.
-5. Видай результат СТРОГО у форматі CSV (status,brand,name,lat,lon,hours,toilet). Жодного зайвого тексту чи пояснень. Якщо змін немає, нічого не пиши.`;
-
             document.getElementById('prompt-output').value = promptText;
             document.getElementById('response-input').value = chunk.response || '';
 
