@@ -216,7 +216,7 @@
 
     <header>
         <h1>CSV Spatial Grid Batch Tool</h1>
-        <p class="subtitle">Мінімалістичний промпт та безлімітне збереження (IndexedDB)</p>
+        <p class="subtitle">Підтримка статусів OPERATIONAL / NEW / CLOSED та годин роботи</p>
     </header>
 
     <div class="stats-bar">
@@ -336,7 +336,7 @@
 
         function initDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('CSVGridDB', 3);
+                const request = indexedDB.open('CSVGridDB', 4);
                 request.onerror = event => reject(event.target.error);
                 request.onsuccess = event => {
                     db = event.target.result;
@@ -505,8 +505,8 @@
             document.getElementById('workspace-card').style.display = 'block';
             document.getElementById('active-chunk-title').innerText = `Зона #${chunk.id} (${chunk.gridKey}) з ${appState.chunks.length}`;
 
-            // Промпт без опису правил після координат
-            const promptText = `Проаналізуй зону (${chunk.gridKey}):
+            // Короткий промпт із базовим правилом перевірки валідності та годин
+            const promptText = `Перевір валідність магазинів у зоні (${chunk.gridKey}). Якщо магазин відсутній — познач як CLOSED. Перевір і додай години роботи (hours), якщо вони відсутні. Видай результат у форматі CSV:
 
 ${chunk.data}`;
 
@@ -552,9 +552,10 @@ ${chunk.data}`;
             if (!rawText) return [];
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
             const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
+            // Розпізнаємо NEW, CLOSED та OPERATIONAL
             return lines.filter(line => {
                 const upper = line.toUpperCase();
-                return upper.startsWith('NEW,') || upper.startsWith('CLOSED,');
+                return upper.startsWith('NEW,') || upper.startsWith('CLOSED,') || upper.startsWith('OPERATIONAL,');
             });
         }
 
@@ -580,15 +581,17 @@ ${chunk.data}`;
             const tbody = document.querySelector('#preview-table tbody');
 
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var::text-muted);">Дані відсутні або зони пропущено (змін немає)</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні або зони пропущено (змін немає)</td></tr>';
                 return;
             }
 
             tbody.innerHTML = rows.slice(0, 10).map(rowStr => {
                 const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
+                let badgeSt = 'status-pending';
+                if (cols[0] === 'NEW' || cols[0] === 'OPERATIONAL') badgeSt = 'status-done';
                 return `
                     <tr>
-                        <td><span class="status-badge ${cols[0] === 'NEW' ? 'status-done' : 'status-pending'}">${cols[0] || ''}</span></td>
+                        <td><span class="status-badge ${badgeSt}">${cols[0] || ''}</span></td>
                         <td>${cols[1] || ''}</td>
                         <td>${cols[2] || ''}</td>
                         <td>${cols[3] || ''}</td>
@@ -603,7 +606,7 @@ ${chunk.data}`;
         function exportMergedCSV() {
             const rows = getAllParsedRows();
             if (rows.length === 0) {
-                alert("Немає знайдених нових чи закритих точок для експорту!");
+                alert("Немає даних для експорту!");
                 return;
             }
 
