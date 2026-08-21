@@ -125,6 +125,7 @@
         }
         .status-pending { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
         .status-done { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .status-skipped { background: rgba(148, 163, 184, 0.2); color: var(--text-muted); }
 
         .chunk-list {
             display: flex;
@@ -153,7 +154,7 @@
 
         textarea {
             width: 100%;
-            height: 180px;
+            height: 220px;
             background: #0f172a;
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -213,7 +214,7 @@
 
     <header>
         <h1>CSV Spatial Grid Batch Tool</h1>
-        <p class="subtitle">Групування координат по квадратних зонах (Тайвань) та підготовка пакунків для AI-чату</p>
+        <p class="subtitle">Групування по зонах з можливістю пропуску («продовжуй»), якщо змін немає</p>
     </header>
 
     <div class="stats-bar">
@@ -239,7 +240,7 @@
                 <label>Оберіть ваш CSV-файл (.csv):</label>
                 <input type="file" id="csv-file-input" accept=".csv">
 
-                <label>Розмір сітки (крок квадратів у градусах, ~0.05 ≈ 5-6 км):</label>
+                <label>Розмір сітки (крок квадратів у градусах):</label>
                 <select id="grid-size-input">
                     <option value="0.03">Малі квадрати (~3 км)</option>
                     <option value="0.05" selected>Середні квадрати (~5-6 км)</option>
@@ -269,11 +270,11 @@
                 <textarea id="prompt-output" readonly></textarea>
                 <button class="btn" style="margin-bottom: 20px;" onclick="copyPrompt()">Скопіювати промпт у буфер</button>
 
-                <label>Вставте відповідь із чату:</label>
-                <textarea id="response-input" placeholder="Вставте відповідь, яку згенерував AI..."></textarea>
+                <label>Вставте відповідь із чату (або напишіть "продовжуй"):</label>
+                <textarea id="response-input" placeholder="Вставте відповідь або напишіть 'продовжуй'..."></textarea>
                 
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-green" onclick="saveChunkResponse()">Зберегти результат для цієї зони</button>
+                    <button class="btn btn-green" onclick="saveChunkResponse()">Зберегти / Продовжити</button>
                 </div>
             </div>
 
@@ -318,7 +319,7 @@
         };
 
         window.onload = function() {
-            const saved = localStorage.getItem('csv_grid_app_state');
+            const saved = localStorage.getItem('csv_grid_app_state_v3');
             if (saved) {
                 try {
                     appState = JSON.parse(saved);
@@ -335,7 +336,7 @@
         };
 
         function saveState() {
-            localStorage.setItem('csv_grid_app_state', JSON.stringify(appState));
+            localStorage.setItem('csv_grid_app_state_v3', JSON.stringify(appState));
         }
 
         function processAndGridCSV() {
@@ -369,7 +370,6 @@
                     return;
                 }
 
-                // Групуємо рядки по квадратах (сітці)
                 let gridMap = {};
 
                 for (let i = 1; i < lines.length; i++) {
@@ -379,7 +379,6 @@
 
                     if (isNaN(lat) || isNaN(lon)) continue;
 
-                    // Обчислюємо індекс квадрата
                     let gridLat = Math.floor(lat / gridSize) * gridSize;
                     let gridLon = Math.floor(lon / gridSize) * gridSize;
                     let gridKey = `Grid_${gridLat.toFixed(2)}_${gridLon.toFixed(2)}`;
@@ -410,7 +409,7 @@
                 renderChunksList();
                 updateStats();
                 if (appState.chunks.length > 0) selectChunk(0);
-                showToast(`Файл згруповано у ${appState.chunks.length} географічних зон!`);
+                showToast(`Файл згруповано у ${appState.chunks.length} зон!`);
             };
 
             reader.readAsText(file);
@@ -423,17 +422,27 @@
                 return;
             }
 
-            container.innerHTML = appState.chunks.map((chunk, idx) => `
-                <div class="chunk-item ${idx === appState.activeChunkIndex ? 'active' : ''}" onclick="selectChunk(${idx})">
-                    <div class="chunk-info">
-                        <h4>Зона #${chunk.id} (${chunk.gridKey})</h4>
-                        <p>Точок у зоні: ${chunk.count}</p>
+            container.innerHTML = appState.chunks.map((chunk, idx) => {
+                let badgeClass = 'status-pending';
+                let badgeText = 'ОЧІКУЄ';
+                if (chunk.status === 'completed') {
+                    badgeClass = 'status-done';
+                    badgeText = 'ГОТОВО';
+                } else if (chunk.status === 'skipped') {
+                    badgeClass = 'status-skipped';
+                    badgeText = 'ПРОПУЩЕНО';
+                }
+
+                return `
+                    <div class="chunk-item ${idx === appState.activeChunkIndex ? 'active' : ''}" onclick="selectChunk(${idx})">
+                        <div class="chunk-info">
+                            <h4>Зона #${chunk.id} (${chunk.gridKey})</h4>
+                            <p>Точок у зоні: ${chunk.count}</p>
+                        </div>
+                        <span class="status-badge ${badgeClass}">${badgeText}</span>
                     </div>
-                    <span class="status-badge ${chunk.status === 'completed' ? 'status-done' : 'status-pending'}">
-                        ${chunk.status === 'completed' ? 'ГОТОВО' : 'ОЧІКУЄ'}
-                    </span>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function selectChunk(index) {
@@ -444,17 +453,24 @@
             document.getElementById('workspace-card').style.display = 'block';
             document.getElementById('active-chunk-title').innerText = `Зона #${chunk.id} (${chunk.gridKey})`;
 
-            const promptText = `Ти картографічний аналітик. Ось локації з моєї бази у цій конкретній географічній зоні (${chunk.gridKey}):
+            const promptText = `Ти — досвідчений аналітик географічних баз даних та системний помічник з валідації даних. Твоє завдання — аналізувати фрагменти CSV-баз даних магазинів, заправок та туалетів у Тайвані, порівнювати їх із реальним станом на основі пошуку в інтернеті (Google Maps / OpenStreetMap) у цій географічній зоні (${chunk.gridKey}) і виявляти зміни.
 
+Ось структура даних, якої ти зобов'язаний суворо дотримуватися:
+status,brand,name,lat,lon,hours,toilet
+
+Ось фрагмент моєї бази для цієї зони:
 ${chunk.data}
 
-Твоє завдання:
-1. Проаналізуй цю локальну зону та наявні тут бренди (7-Eleven, FamilyMart, заправки тощо).
-2. Знайди нові потенційні точки у цій же зоні, яких немає в списку (status: 'NEW').
-3. Визнач магазини, які могли закритися або неактуальні (status: 'CLOSED').
+Твої правила роботи:
+1. Проаналізуй цей фрагмент бази даних.
+2. Перевір реальний стан точок за допомогою пошуку в цій зоні:
+   - Якщо магазин є на карті (працює), але в базі немає якихось даних (наприклад, годин чи туалету), він залишається відкритим і діючим (такі рядки ми не чіпаємо).
+   - Якщо конкретної точки за цими координатами на карті більше немає або вона закрита — познач її як 'CLOSED'.
+   - Якщо поруч з'явилися нові магазини цих же брендів, яких немає в цьому фрагменті — познач їх як 'NEW'.
+3. Видай результат СТРОГО у форматі CSV із колонками: status,brand,name,lat,lon,hours,toilet (де status: 'NEW' або 'CLOSED').
+4. Жодного вступного чи підсумкового тексту, жодних пояснень чи розмов — лише чисті рядки CSV з результатами. Якщо змін немає, поверни порожній рядок або нічого не пиши.
 
-Видай результат СТРОГО у форматі CSV з колонками: status,brand,name,lat,lon,hours,toilet
-Без жодних вступних чи додаткових пояснень, лише рядки CSV.`;
+Чекаю на результати для цієї зони.`;
 
             document.getElementById('prompt-output').value = promptText;
             document.getElementById('response-input').value = chunk.response || '';
@@ -471,31 +487,41 @@ ${chunk.data}
 
         function saveChunkResponse() {
             const idx = appState.activeChunkIndex;
-            const resText = document.getElementById('response-input').value.trim();
-
-            if (!resText) {
-                alert("Вставте відповідь від AI!");
-                return;
-            }
+            const resText = document.getElementById('response-input'].value.trim();
 
             appState.chunks[idx].response = resText;
-            appState.chunks[idx].status = 'completed';
+
+            // Перевіряємо, чи є у відповіді реальні рядки зі змінами (NEW або CLOSED)
+            const cleaned = cleanAIResponse(resText);
+            if (cleaned.length > 0) {
+                appState.chunks[idx].status = 'completed';
+                showToast("Зону опрацьовано та збережено!");
+            } else {
+                // Якщо немає рядків NEW/CLOSED (наприклад, написано "продовжуй" або порожньо)
+                appState.chunks[idx].status = 'skipped';
+                showToast("Зону пропущено (змін немає)!");
+            }
 
             saveState();
             renderChunksList();
             updateStats();
             renderPreviewTable();
-            showToast("Зону збережено!");
 
+            // Автоперехід на наступну зону
             if (idx + 1 < appState.chunks.length) {
                 selectChunk(idx + 1);
             }
         }
 
         function cleanAIResponse(rawText) {
+            if (!rawText) return [];
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
             const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
-            return lines.filter(line => !line.toLowerCase().startsWith('status,brand,name'));
+            // Шукаємо тільки рядки, які починаються з NEW або CLOSED
+            return lines.filter(line => {
+                const upper = line.toUpperCase();
+                return upper.startsWith('NEW,') || upper.startsWith('CLOSED,');
+            });
         }
 
         function getAllParsedRows() {
@@ -510,8 +536,8 @@ ${chunk.data}
 
         function updateStats() {
             document.getElementById('stat-total-chunks').innerText = appState.chunks.length;
-            const completed = appState.chunks.filter(c => c.status === 'completed').length;
-            document.getElementById('stat-completed-chunks').innerText = completed;
+            const processedCount = appState.chunks.filter(c => c.status === 'completed' || c.status === 'skipped').length;
+            document.getElementById('stat-completed-chunks').innerText = processedCount;
             document.getElementById('stat-parsed-records').innerText = getAllParsedRows().length;
         }
 
@@ -520,7 +546,7 @@ ${chunk.data}
             const tbody = document.querySelector('#preview-table tbody');
 
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні або зони пропущено (змін немає)</td></tr>';
                 return;
             }
 
@@ -543,7 +569,7 @@ ${chunk.data}
         function exportMergedCSV() {
             const rows = getAllParsedRows();
             if (rows.length === 0) {
-                alert("Немає даних для експорту!");
+                alert("Немає знайдених нових чи закритих точок для експорту!");
                 return;
             }
 
@@ -554,7 +580,6 @@ ${chunk.data}
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
             link.download = "report.csv";
-            document.link;
             link.click();
             showToast("report.csv завантажено!");
         }
@@ -562,7 +587,7 @@ ${chunk.data}
         function resetAllData() {
             if (confirm("Скинути всі дані та зони?")) {
                 appState = { chunks: [], activeChunkIndex: 0 };
-                localStorage.removeItem('csv_grid_app_state');
+                localStorage.removeItem('csv_grid_app_state_v3');
                 renderChunksList();
                 updateStats();
                 renderPreviewTable();
