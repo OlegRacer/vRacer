@@ -2,83 +2,581 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>GPX to CSV Converter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Spatial Grid Batch Tool for AI Chat</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        .container { max-width: 600px; margin: auto; }
-        .box { border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        button:hover { background: #0056b3; }
-        #data-status { font-weight: bold; margin-top: 10px; }
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #22c55e;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        header {
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: var(--accent-blue);
+            margin-bottom: 8px;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        @media (min-width: 850px) {
+            .grid-container {
+                grid-template-columns: 380px 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        input[type="file"], input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-main);
+            margin-bottom: 14px;
+        }
+
+        .btn {
+            background-color: var(--accent-blue);
+            color: #0f172a;
+            font-weight: 600;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:hover { opacity: 0.9; }
+        .btn-green { background-color: var(--accent-green); color: #ffffff; }
+        .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-outline:hover { background: #334155; }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+        .status-pending { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .status-done { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+
+        .chunk-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .chunk-item {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .chunk-item.active { border-color: var(--accent-blue); }
+
+        .chunk-info h4 { font-size: 0.95rem; }
+        .chunk-info p { font-size: 0.8rem; color: var(--text-muted); }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-main);
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            resize: vertical;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .stat-box {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 8px;
+            flex: 1;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+        .stat-value { font-size: 1.4rem; font-weight: bold; color: var(--accent-blue); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--accent-green);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 8px 10px;
+            text-align: left;
+        }
+        th { background: #0f172a; color: var(--text-muted); }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>Конвертер GPX у CSV</h1>
-    <div class="box">
-        <input type="file" id="gpx-file" accept=".gpx">
-        <button onclick="processFile()">Додати файл</button>
-        <p id="data-status">Завантажено точок: 0</p>
+
+    <header>
+        <h1>CSV Spatial Grid Batch Tool</h1>
+        <p class="subtitle">Групування координат по квадратних зонах (Тайвань) та підготовка пакунків для AI-чату</p>
+    </header>
+
+    <div class="stats-bar">
+        <div class="stat-box">
+            <div class="stat-value" id="stat-total-chunks">0</div>
+            <div class="stat-label">Зони (Пакунки)</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value" id="stat-completed-chunks">0</div>
+            <div class="stat-label">Опрацьовано</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value" id="stat-parsed-records">0</div>
+            <div class="stat-label">Знайдено об'єктів</div>
+        </div>
     </div>
-    <button onclick="downloadCSV()">Завантажити підсумковий CSV</button>
-    <button onclick="clearData()" style="background: #dc3545;">Очистити пам'ять</button>
-</div>
 
-<script>
-    // Завантаження даних з пам'яті браузера
-    let store = JSON.parse(localStorage.getItem('gpx_data') || '[]');
-    updateUI();
+    <div class="grid-container">
+        <!-- ЛІВА КОЛОНКА -->
+        <div>
+            <div class="card">
+                <div class="card-title">1. Завантаження бази</div>
+                <label>Оберіть ваш CSV-файл (.csv):</label>
+                <input type="file" id="csv-file-input" accept=".csv">
 
-    async function processFile() {
-        const fileInput = document.getElementById('gpx-file');
-        if (!fileInput.files.length) return alert('Оберіть файл!');
+                <label>Розмір сітки (крок квадратів у градусах, ~0.05 ≈ 5-6 км):</label>
+                <select id="grid-size-input">
+                    <option value="0.03">Малі квадрати (~3 км)</option>
+                    <option value="0.05" selected>Середні квадрати (~5-6 км)</option>
+                    <option value="0.1">Великі квадрати (~10-11 км)</option>
+                </select>
 
-        const file = fileInput.files[0];
-        const text = await file.text();
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(text, "text/xml");
-        const waypoints = xml.getElementsByTagName("wpt");
+                <button class="btn" onclick="processAndGridCSV()">Згрупувати по зонах</button>
+            </div>
 
-        for (let wpt of waypoints) {
-            store.push({
-                Brand: wpt.getElementsByTagName("brand")[0]?.textContent || '',
-                name: wpt.getElementsByTagName("name")[0]?.textContent || '',
-                lat: wpt.getAttribute("lat"),
-                lon: wpt.getAttribute("lon"),
-                hours: wpt.getElementsByTagName("hours")[0]?.textContent || '',
-                toilet: wpt.getElementsByTagName("toilet")[0]?.textContent || ''
-            });
+            <div class="card">
+                <div class="card-title">
+                    <span>2. Географічні зони</span>
+                    <button class="btn-outline" style="padding: 4px 8px; font-size: 0.75rem;" onclick="resetAllData()">Скинути все</button>
+                </div>
+                <div class="chunk-list" id="chunks-container">
+                    <p style="color: var(--text-muted); font-size: 0.85rem;">Завантажте CSV, щоб побачити зони...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ПРАВА КОЛОНКА -->
+        <div>
+            <div class="card" id="workspace-card" style="display: none;">
+                <div class="card-title" id="active-chunk-title">Зона #1</div>
+
+                <label>Автоматичний промпт для чату (скопіюйте та відправте в чат):</label>
+                <textarea id="prompt-output" readonly></textarea>
+                <button class="btn" style="margin-bottom: 20px;" onclick="copyPrompt()">Скопіювати промпт у буфер</button>
+
+                <label>Вставте відповідь із чату:</label>
+                <textarea id="response-input" placeholder="Вставте відповідь, яку згенерував AI..."></textarea>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-green" onclick="saveChunkResponse()">Зберегти результат для цієї зони</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span>3. Експорт підсумкового CSV</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+                    Збережені відповіді з усіх зон об'єднуються у єдиний файл звіту.
+                </p>
+                <button class="btn btn-green" onclick="exportMergedCSV()">Завантажити report.csv</button>
+
+                <div style="margin-top: 16px; overflow-x: auto;">
+                    <label>Попередній перегляд зібраних даних:</label>
+                    <table id="preview-table">
+                        <thead>
+                            <tr>
+                                <th>status</th>
+                                <th>brand</th>
+                                <th>name</th>
+                                <th>lat</th>
+                                <th>lon</th>
+                                <th>hours</th>
+                                <th>toilet</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast-msg">Скопійовано!</div>
+
+    <script>
+        let appState = {
+            chunks: [],
+            activeChunkIndex: 0
+        };
+
+        window.onload = function() {
+            const saved = localStorage.getItem('csv_grid_app_state');
+            if (saved) {
+                try {
+                    appState = JSON.parse(saved);
+                    renderChunksList();
+                    updateStats();
+                    renderPreviewTable();
+                    if (appState.chunks.length > 0) {
+                        selectChunk(appState.activeChunkIndex || 0);
+                    }
+                } catch(e) {
+                    console.error("Помилка відновлення стану", e);
+                }
+            }
+        };
+
+        function saveState() {
+            localStorage.setItem('csv_grid_app_state', JSON.stringify(appState));
         }
-        
-        localStorage.setItem('gpx_data', JSON.stringify(store));
-        updateUI();
-        alert('Файл додано!');
-    }
 
-    function updateUI() {
-        document.getElementById('data-status').innerText = `Завантажено точок: ${store.length}`;
-    }
+        function processAndGridCSV() {
+            const fileInput = document.getElementById('csv-file-input');
+            const gridSize = parseFloat(document.getElementById('grid-size-input').value) || 0.05;
 
-    function downloadCSV() {
-        if (store.length === 0) return alert('Немає даних!');
-        let csv = "Brand,name,lat,lon,hours,toilet\n";
-        store.forEach(row => {
-            csv += `${row.Brand},${row.name},${row.lat},${row.lon},${row.hours},${row.toilet}\n`;
-        });
-        
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'data.csv';
-        a.click();
-    }
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("Будь ласка, оберіть CSV-файл!");
+                return;
+            }
 
-    function clearData() {
-        localStorage.removeItem('gpx_data');
-        store = [];
-        updateUI();
-    }
-</script>
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
+
+                if (lines.length <= 1) {
+                    alert("CSV файл порожній або містить тільки заголовок.");
+                    return;
+                }
+
+                const header = lines[0];
+                const headerCols = header.split(',').map(h => h.trim().toLowerCase());
+                const latIdx = headerCols.indexOf('lat');
+                const lonIdx = headerCols.indexOf('lon');
+
+                if (latIdx === -1 || lonIdx === -1) {
+                    alert("У файлі обов'язково мають бути колонки 'lat' та 'lon'!");
+                    return;
+                }
+
+                // Групуємо рядки по квадратах (сітці)
+                let gridMap = {};
+
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = lines[i].split(',').map(c => c.trim());
+                    const lat = parseFloat(cols[latIdx]);
+                    const lon = parseFloat(cols[lonIdx]);
+
+                    if (isNaN(lat) || isNaN(lon)) continue;
+
+                    // Обчислюємо індекс квадрата
+                    let gridLat = Math.floor(lat / gridSize) * gridSize;
+                    let gridLon = Math.floor(lon / gridSize) * gridSize;
+                    let gridKey = `Grid_${gridLat.toFixed(2)}_${gridLon.toFixed(2)}`;
+
+                    if (!gridMap[gridKey]) {
+                        gridMap[gridKey] = [];
+                    }
+                    gridMap[gridKey].push(lines[i]);
+                }
+
+                appState.chunks = [];
+                let zoneId = 1;
+
+                for (let key in gridMap) {
+                    const chunkData = [header, ...gridMap[key]].join('\n');
+                    appState.chunks.push({
+                        id: zoneId++,
+                        gridKey: key,
+                        data: chunkData,
+                        count: gridMap[key].length,
+                        response: '',
+                        status: 'pending'
+                    });
+                }
+
+                appState.activeChunkIndex = 0;
+                saveState();
+                renderChunksList();
+                updateStats();
+                if (appState.chunks.length > 0) selectChunk(0);
+                showToast(`Файл згруповано у ${appState.chunks.length} географічних зон!`);
+            };
+
+            reader.readAsText(file);
+        }
+
+        function renderChunksList() {
+            const container = document.getElementById('chunks-container');
+            if (appState.chunks.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Завантажте CSV, щоб побачити зони...</p>';
+                return;
+            }
+
+            container.innerHTML = appState.chunks.map((chunk, idx) => `
+                <div class="chunk-item ${idx === appState.activeChunkIndex ? 'active' : ''}" onclick="selectChunk(${idx})">
+                    <div class="chunk-info">
+                        <h4>Зона #${chunk.id} (${chunk.gridKey})</h4>
+                        <p>Точок у зоні: ${chunk.count}</p>
+                    </div>
+                    <span class="status-badge ${chunk.status === 'completed' ? 'status-done' : 'status-pending'}">
+                        ${chunk.status === 'completed' ? 'ГОТОВО' : 'ОЧІКУЄ'}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function selectChunk(index) {
+            if (index < 0 || index >= appState.chunks.length) return;
+            appState.activeChunkIndex = index;
+            const chunk = appState.chunks[index];
+
+            document.getElementById('workspace-card').style.display = 'block';
+            document.getElementById('active-chunk-title').innerText = `Зона #${chunk.id} (${chunk.gridKey})`;
+
+            const promptText = `Ти картографічний аналітик. Ось локації з моєї бази у цій конкретній географічній зоні (${chunk.gridKey}):
+
+${chunk.data}
+
+Твоє завдання:
+1. Проаналізуй цю локальну зону та наявні тут бренди (7-Eleven, FamilyMart, заправки тощо).
+2. Знайди нові потенційні точки у цій же зоні, яких немає в списку (status: 'NEW').
+3. Визнач магазини, які могли закритися або неактуальні (status: 'CLOSED').
+
+Видай результат СТРОГО у форматі CSV з колонками: status,brand,name,lat,lon,hours,toilet
+Без жодних вступних чи додаткових пояснень, лише рядки CSV.`;
+
+            document.getElementById('prompt-output').value = promptText;
+            document.getElementById('response-input').value = chunk.response || '';
+
+            renderChunksList();
+        }
+
+        function copyPrompt() {
+            const copyText = document.getElementById("prompt-output");
+            copyText.select();
+            document.execCommand("copy");
+            showToast("Промпт скопійовано!");
+        }
+
+        function saveChunkResponse() {
+            const idx = appState.activeChunkIndex;
+            const resText = document.getElementById('response-input').value.trim();
+
+            if (!resText) {
+                alert("Вставте відповідь від AI!");
+                return;
+            }
+
+            appState.chunks[idx].response = resText;
+            appState.chunks[idx].status = 'completed';
+
+            saveState();
+            renderChunksList();
+            updateStats();
+            renderPreviewTable();
+            showToast("Зону збережено!");
+
+            if (idx + 1 < appState.chunks.length) {
+                selectChunk(idx + 1);
+            }
+        }
+
+        function cleanAIResponse(rawText) {
+            let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
+            const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
+            return lines.filter(line => !line.toLowerCase().startsWith('status,brand,name'));
+        }
+
+        function getAllParsedRows() {
+            let allRows = [];
+            appState.chunks.forEach(chunk => {
+                if (chunk.response && chunk.status === 'completed') {
+                    allRows = allRows.concat(cleanAIResponse(chunk.response));
+                }
+            });
+            return allRows;
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total-chunks').innerText = appState.chunks.length;
+            const completed = appState.chunks.filter(c => c.status === 'completed').length;
+            document.getElementById('stat-completed-chunks').innerText = completed;
+            document.getElementById('stat-parsed-records').innerText = getAllParsedRows().length;
+        }
+
+        function renderPreviewTable() {
+            const rows = getAllParsedRows();
+            const tbody = document.querySelector('#preview-table tbody');
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.slice(0, 10).map(rowStr => {
+                const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
+                return `
+                    <tr>
+                        <td><span class="status-badge ${cols[0] === 'NEW' ? 'status-done' : 'status-pending'}">${cols[0] || ''}</span></td>
+                        <td>${cols[1] || ''}</td>
+                        <td>${cols[2] || ''}</td>
+                        <td>${cols[3] || ''}</td>
+                        <td>${cols[4] || ''}</td>
+                        <td>${cols[5] || ''}</td>
+                        <td>${cols[6] || ''}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function exportMergedCSV() {
+            const rows = getAllParsedRows();
+            if (rows.length === 0) {
+                alert("Немає даних для експорту!");
+                return;
+            }
+
+            const header = "status,brand,name,lat,lon,hours,toilet";
+            const fullCSV = [header, ...rows].join('\n');
+
+            const blob = new Blob(["\uFEFF" + fullCSV], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "report.csv";
+            document.link;
+            link.click();
+            showToast("report.csv завантажено!");
+        }
+
+        function resetAllData() {
+            if (confirm("Скинути всі дані та зони?")) {
+                appState = { chunks: [], activeChunkIndex: 0 };
+                localStorage.removeItem('csv_grid_app_state');
+                renderChunksList();
+                updateStats();
+                renderPreviewTable();
+                document.getElementById('workspace-card').style.display = 'none';
+                showToast("Скинуто!");
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-msg');
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 2500);
+        }
+    </script>
 </body>
 </html>
