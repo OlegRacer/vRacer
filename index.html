@@ -156,7 +156,7 @@
 
         textarea {
             width: 100%;
-            height: 220px;
+            height: 180px;
             background: #0f172a;
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -216,7 +216,7 @@
 
     <header>
         <h1>CSV Spatial Grid Batch Tool</h1>
-        <p class="subtitle">Виправлений парсер статусів (OPERATIONAL / NEW / CLOSED)</p>
+        <p class="subtitle">З можливістю ручного доповнення новими адресами</p>
     </header>
 
     <div class="stats-bar">
@@ -293,12 +293,20 @@
                 </div>
             </div>
 
+            <!-- ДОДАТКОВИЙ БЛОК ДЛЯ ДОПОВНЕННЯ -->
+            <div class="card">
+                <div class="card-title">Додати нові адреси напряму</div>
+                <label>Вставте додаткові рядки (status,brand,name,lat,lon,hours,toilet):</label>
+                <textarea id="manual-extra-input" placeholder="NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
+                <button class="btn btn-green" onclick="appendManualData()">➕ Додати до загальної бази</button>
+            </div>
+
             <div class="card">
                 <div class="card-title">
                     <span>3. Експорт підсумкового CSV</span>
                 </div>
-                <p style="font-size: 0.85rem; color: var::text-muted; margin-bottom: 12px;">
-                    Збережені відповіді з усіх зон об'єднуються у єдиний файл звіту.
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+                    Збережені відповіді з усіх зон та додаткові записи об'єднуються у єдиний файл звіту.
                 </p>
                 <button class="btn btn-green" onclick="exportMergedCSV()">Завантажити report.csv</button>
 
@@ -331,12 +339,13 @@
         let db = null;
         let appState = {
             chunks: [],
-            activeChunkIndex: 0
+            activeChunkIndex: 0,
+            manualExtra: "" // Зберігаємо ручні доповнення
         };
 
         function initDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('CSVGridDB', 5);
+                const request = indexedDB.open('CSVGridDB', 6);
                 request.onerror = event => reject(event.target.error);
                 request.onsuccess = event => {
                     db = event.target.result;
@@ -367,6 +376,7 @@
                 request.onsuccess = event => {
                     if (event.target.result) {
                         appState = event.target.result;
+                        if (!appState.manualExtra) appState.manualExtra = "";
                         resolve(true);
                     } else {
                         resolve(false);
@@ -380,11 +390,16 @@
             try {
                 await initDB();
                 const loaded = await loadStateFromDB();
-                if (loaded && appState.chunks.length > 0) {
-                    renderChunksList();
+                if (loaded) {
+                    if (appState.chunks.length > 0) {
+                        renderChunksList();
+                        selectChunk(appState.activeChunkIndex || 0);
+                    }
+                    if (appState.manualExtra) {
+                        document.getElementById('manual-extra-input').value = appState.manualExtra;
+                    }
                     updateStats();
                     renderPreviewTable();
-                    selectChunk(appState.activeChunkIndex || 0);
                 }
             } catch(e) {
                 console.error("Помилка ініціалізації IndexedDB", e);
@@ -547,12 +562,20 @@ ${chunk.data}`;
             }
         }
 
+        function appendManualData() {
+            const val = document.getElementById('manual-extra-input').value;
+            appState.manualExtra = val;
+            saveStateToDB();
+            updateStats();
+            renderPreviewTable();
+            showToast("Додаткові адреси успішно збережено!");
+        }
+
         function cleanAIResponse(rawText) {
             if (!rawText) return [];
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
             const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
             
-            // Виправляємо перевірку: прибираємо зайві пробіли на початку рядка перед звіркою
             return lines.filter(line => {
                 const upper = line.trim().toUpperCase();
                 return upper.startsWith('NEW,') || upper.startsWith('CLOSED,') || upper.startsWith('OPERATIONAL,');
@@ -561,11 +584,17 @@ ${chunk.data}`;
 
         function getAllParsedRows() {
             let allRows = [];
+            // Збираємо з усіх завершених зон
             appState.chunks.forEach(chunk => {
                 if (chunk.response && chunk.status === 'completed') {
                     allRows = allRows.concat(cleanAIResponse(chunk.response));
                 }
             });
+            // Додаємо ручні записи з додаткового віконця
+            if (appState.manualExtra) {
+                const manualRows = cleanAIResponse(appState.manualExtra);
+                allRows = allRows.concat(manualRows);
+            }
             return allRows;
         }
 
@@ -581,7 +610,7 @@ ${chunk.data}`;
             const tbody = document.querySelector('#preview-table tbody');
 
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні або зони пропущено (змін немає)</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
                 return;
             }
 
@@ -622,7 +651,7 @@ ${chunk.data}`;
         }
 
         function exportBackupJSON() {
-            if (appState.chunks.length === 0) {
+            if (appState.chunks.length === 0 && !appState.manualExtra) {
                 alert("Немає даних для бекапу!");
                 return;
             }
@@ -643,10 +672,12 @@ ${chunk.data}`;
                 fileReader.onload = (e) => {
                     try {
                         const parsed = JSON.parse(e.target.result);
-                        if (parsed && parsed.chunks) {
+                        if (parsed && (parsed.chunks || parsed.manualExtra)) {
                             appState = parsed;
+                            if (!appState.manualExtra) appState.manualExtra = "";
                             saveStateToDB();
                             renderChunksList();
+                            document.getElementById('manual-extra-input').value = appState.manualExtra;
                             updateStats();
                             renderPreviewTable();
                             if (appState.chunks.length > 0) {
@@ -665,9 +696,10 @@ ${chunk.data}`;
 
         function resetAllData() {
             if (confirm("Скинути всі дані та зони? Увесь прогрес буде видалено!")) {
-                appState = { chunks: [], activeChunkIndex: 0 };
+                appState = { chunks: [], activeChunkIndex: 0, manualExtra: "" };
                 saveStateToDB();
                 renderChunksList();
+                document.getElementById('manual-extra-input').value = "";
                 updateStats();
                 renderPreviewTable();
                 document.getElementById('workspace-card').style.display = 'none';
