@@ -296,11 +296,11 @@
             <!-- ДОДАТКОВИЙ БЛОК ДЛЯ ДОПОВНЕННЯ -->
             <div class="card">
                 <div class="card-title">Додати нові адреси напряму</div>
-                <label>Вставте додаткові рядки (status,brand,name,lat,lon,hours,toilet):</label>
-                <textarea id="manual-extra-input" placeholder="NEW,7-Eleven,Назва,24.xxxx,121.xxxx,Mo-Su 24/7,
-NEW,Family Mart,Назва,24.xxxx,121.xxxx,Mo-Su 24/7,
-NEW,Ok mart,Назва,24.xxxx,121.xxxx,Mo-Su 24/7,
-NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
+                <label>Вставте додаткові рядки (brand,name,lat,lon,hours,toilet):</label>
+                <textarea id="manual-extra-input" placeholder="7-Eleven,Назва,24.xxxx,121.xxxx,24/7,
+Family Mart,Назва,24.xxxx,121.xxxx,24/7,
+Ok mart,Назва,24.xxxx,121.xxxx,24/7,
+CoCo,Назва,24.xxxx,121.xxxx,10:00-22:00,"></textarea>
                 <button class="btn btn-green" onclick="appendManualData()">➕ Додати до загальної бази</button>
             </div>
 
@@ -318,7 +318,6 @@ NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
                     <table id="preview-table">
                         <thead>
                             <tr>
-                                <th>status</th>
                                 <th>brand</th>
                                 <th>name</th>
                                 <th>lat</th>
@@ -328,7 +327,7 @@ NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -348,7 +347,7 @@ NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
 
         function initDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('CSVGridDB', 7);
+                const request = indexedDB.open('CSVGridDB', 8);
                 request.onerror = event => reject(event.target.error);
                 request.onsuccess = event => {
                     db = event.target.result;
@@ -523,7 +522,7 @@ NEW,CoCo,Назва,24.xxxx,121.xxxx,Mo-Su 10:00-22:00,"></textarea>
             document.getElementById('workspace-card').style.display = 'block';
             document.getElementById('active-chunk-title').innerText = `Зона #${chunk.id} (${chunk.gridKey}) з ${appState.chunks.length}`;
 
-            const promptText = `Перевір валідність магазинів (CoCo, 7-Eleven, Family Mart, Ok mart) у зоні (${chunk.gridKey}). Якщо магазин відсутній — познач як CLOSED. Перевір і додай години роботи (hours) та наявність туалету (toilet), якщо вони відсутні. Видай результат у форматі CSV:
+            const promptText = `Перевір магазини (CoCo, 7-Eleven, Family Mart, Ok mart) у зоні (${chunk.gridKey}). Додай години роботи (hours) та туалет (toilet). Видай результат у форматі CSV (колонки: brand,name,lat,lon,hours,toilet):
 
 ${chunk.data}`;
 
@@ -552,7 +551,7 @@ ${chunk.data}`;
                 showToast("Зону опрацьовано та збережено!");
             } else {
                 appState.chunks[idx].status = 'skipped';
-                showToast("Зону пропущено (змін немає)!");
+                showToast("Зону пропущено (немає валідних рядків)!");
             }
 
             saveStateToDB();
@@ -576,13 +575,24 @@ ${chunk.data}`;
 
         function cleanAIResponse(rawText) {
             if (!rawText) return [];
+            // Прибираємо маркдаун і розриви рядків усередині назв бренду/магазину якщо такі є
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
-            const lines = text.split(/\r\n|\n/).map(l => l.trim()).filter(l => l.length > 0);
             
-            return lines.filter(line => {
-                const upper = line.trim().toUpperCase();
-                return upper.startsWith('NEW,') || upper.startsWith('CLOSED,') || upper.startsWith('OPERATIONAL,');
-            });
+            const lines = text.split(/\r\n|\n/);
+            let validRows = [];
+            
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+                if (line.toLowerCase().startsWith('brand') || line.toLowerCase().startsWith('status')) continue;
+                
+                // Перевіряємо чи рядок містить мінімум кілька ком (схожий на CSV)
+                const parts = line.split(',');
+                if (parts.length >= 4) {
+                    validRows.push(line);
+                }
+            }
+            return validRows;
         }
 
         function getAllParsedRows() {
@@ -611,23 +621,20 @@ ${chunk.data}`;
             const tbody = document.querySelector('#preview-table tbody');
 
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Дані відсутні</td></tr>';
                 return;
             }
 
             tbody.innerHTML = rows.slice(0, 10).map(rowStr => {
                 const cols = rowStr.split(',').map(c => c.trim().replace(/^"/, '').replace(/"$/, ''));
-                let badgeSt = 'status-pending';
-                if (cols[0] === 'NEW' || cols[0] === 'OPERATIONAL') badgeSt = 'status-done';
                 return `
                     <tr>
-                        <td><span class="status-badge ${badgeSt}">${cols[0] || ''}</span></td>
+                        <td>${cols[0] || ''}</td>
                         <td>${cols[1] || ''}</td>
                         <td>${cols[2] || ''}</td>
                         <td>${cols[3] || ''}</td>
                         <td>${cols[4] || ''}</td>
                         <td>${cols[5] || ''}</td>
-                        <td>${cols[6] || ''}</td>
                     </tr>
                 `;
             }).join('');
@@ -640,7 +647,7 @@ ${chunk.data}`;
                 return;
             }
 
-            const header = "status,brand,name,lat,lon,hours,toilet";
+            const header = "brand,name,lat,lon,hours,toilet";
             const fullCSV = [header, ...rows].join('\n');
 
             const blob = new Blob(["\uFEFF" + fullCSV], { type: 'text/csv;charset=utf-8;' });
