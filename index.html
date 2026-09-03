@@ -216,7 +216,7 @@
 
     <header>
         <h1>vRacer</h1>
-        <p class="subtitle">OlegRace2 — CSV Spatial Grid Batch Tool (CoCo, 7-Eleven, Family Mart, Ok mart)</p>
+        <p class="subtitle">OlegRace2 — CSV Spatial Grid Batch Tool (CoCo, 7-Eleven, Family Mart, Ok mart, AZS)</p>
     </header>
 
     <div class="stats-bar">
@@ -297,9 +297,8 @@
             <div class="card">
                 <div class="card-title">Додати нові адреси напряму</div>
                 <label>Вставте додаткові рядки (brand,name,lat,lon,hours,toilet):</label>
-                <textarea id="manual-extra-input" placeholder="7-Eleven,Назва,24.xxxx,121.xxxx,24/7,
-Family Mart,Назва,24.xxxx,121.xxxx,24/7,
-Ok mart,Назва,24.xxxx,121.xxxx,24/7,
+                <textarea id="manual-extra-input" placeholder="AZS,台灣中油,24.5204232,121.8333547,24/7,
+7-Eleven,Назва,24.xxxx,121.xxxx,24/7,
 CoCo,Назва,24.xxxx,121.xxxx,10:00-22:00,"></textarea>
                 <button class="btn btn-green" onclick="appendManualData()">➕ Додати до загальної бази</button>
             </div>
@@ -347,7 +346,7 @@ CoCo,Назва,24.xxxx,121.xxxx,10:00-22:00,"></textarea>
 
         function initDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('CSVGridDB', 8);
+                const request = indexedDB.open('CSVGridDB', 10);
                 request.onerror = event => reject(event.target.error);
                 request.onsuccess = event => {
                     db = event.target.result;
@@ -522,8 +521,9 @@ CoCo,Назва,24.xxxx,121.xxxx,10:00-22:00,"></textarea>
             document.getElementById('workspace-card').style.display = 'block';
             document.getElementById('active-chunk-title').innerText = `Зона #${chunk.id} (${chunk.gridKey}) з ${appState.chunks.length}`;
 
-            const promptText = `Перевір магазини (CoCo, 7-Eleven, Family Mart, Ok mart) у зоні (${chunk.gridKey}). Додай години роботи (hours) та туалет (toilet). Видай результат у форматі CSV (колонки: brand,name,lat,lon,hours,toilet):
+            const promptText = `Перевір магазини та заправні станції (CoCo, 7-Eleven, Family Mart, Ok mart, AZS) у зоні (${chunk.gridKey}). Якщо це заправна станція або АЗС, вказуй бренд "AZS" на початку рядка (наприклад: AZS,台灣中油,lat,lon,hours,toilet). Додай години роботи (hours) та туалет (toilet), якщо вони відсутні. Видай результат у форматі CSV:
 
+brand,name,lat,lon,hours,toilet
 ${chunk.data}`;
 
             document.getElementById('prompt-output').value = promptText;
@@ -575,7 +575,6 @@ ${chunk.data}`;
 
         function cleanAIResponse(rawText) {
             if (!rawText) return [];
-            // Прибираємо маркдаун і розриви рядків усередині назв бренду/магазину якщо такі є
             let text = rawText.replace(/```csv/gi, '').replace(/```/g, '').trim();
             
             const lines = text.split(/\r\n|\n/);
@@ -586,7 +585,6 @@ ${chunk.data}`;
                 if (!line) continue;
                 if (line.toLowerCase().startsWith('brand') || line.toLowerCase().startsWith('status')) continue;
                 
-                // Перевіряємо чи рядок містить мінімум кілька ком (схожий на CSV)
                 const parts = line.split(',');
                 if (parts.length >= 4) {
                     validRows.push(line);
