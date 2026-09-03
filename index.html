@@ -2,40 +2,55 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Заміна бренду в CSV</title>
+    <title>Заміна бренду в CSV файлі</title>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        textarea { width: 100%; height: 200px; margin-bottom: 10px; font-family: monospace; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        .box { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-bottom: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
-    <h2>Заміна "AZS" на "Заправка" в CSV</h2>
+    <h2>Заміна "AZS" на "Заправка" у CSV файлі</h2>
     
-    <label for="inputCsv">Вставте текст CSV:</label>
-    <textarea id="inputCsv">brand	name	lat	lon	hours	toilet
-AZS	台灣中油	25.2238837	121.6310592	24/7	</textarea>
+    <div class="box">
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
 
-    <button onclick="replaceBrand()">Замінити та скопіювати</button>
-
-    <label for="outputCsv" style="margin-top: 20px; display: block;">Результат:</label>
-    <textarea id="outputCsv"></textarea>
+    <button id="downloadBtn" onclick="processFile()" disabled>Обробити та завантажити</button>
 
     <script>
-        function replaceBrand() {
-            const input = document.getElementById('inputCsv').value;
-            // Замінюємо всі входження AZS на Заправка (з урахуванням меж слів або просто текст)
-            const output = input.replaceAll('AZS', 'Заправка');
+        let fileContent = '';
+        let fileName = '';
+
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
             
-            const outputArea = document.getElementById('outputCsv');
-            outputArea.value = output;
+            fileName = file.name;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                fileContent = event.target.result;
+                document.getElementById('downloadBtn').disabled = false;
+            };
+            reader.readAsText(file);
+        });
+
+        function processFile() {
+            // Замінюємо всі входження AZS на Заправка
+            const modifiedContent = fileContent.replaceAll('AZS', 'Заправка');
+
+            // Створюємо новий файл для скачування
+            const blob = new Blob([modifiedContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
             
-            // Автоматичне копіювання в буфер обміну
-            outputArea.select();
-            navigator.clipboard.writeText(output).then(() => {
-                alert('Результат скопійовано в буфер обміну!');
-            });
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'modified_' + fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     </script>
 
